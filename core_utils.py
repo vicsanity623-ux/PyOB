@@ -20,20 +20,10 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Warning: 'ollama' package not found. Local LLM fallback disabled.")
 
-GEMINI_API_KEYS = [
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-    "-PASTE--YOUR--KEYS--HERE",
-]
-GEMINI_MODEL = "gemini-2.5-flash"
-LOCAL_MODEL = "qwen3-coder:30b"
+env_keys = os.environ.get("NOCLAW_GEMINI_KEYS", "")
+GEMINI_API_KEYS = [k.strip() for k in env_keys.split(",") if k.strip()]
+GEMINI_MODEL = os.environ.get("NOCLAW_GEMINI_MODEL", "gemini-2.5-flash")
+LOCAL_MODEL = os.environ.get("NOCLAW_LOCAL_MODEL", "qwen3-coder:30b")
 PR_FILE_NAME = "PEER_REVIEW.md"
 FEATURE_FILE_NAME = "FEATURE.md"
 FAILED_PR_FILE_NAME = "FAILED_PEER_REVIEW.md"

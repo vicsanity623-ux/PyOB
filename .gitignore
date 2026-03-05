@@ -2,3 +2,8 @@ __pycache__
 .mypy_cache
 *_cache
 .DS_STORE
+dist
+build
+build_env
+NoClaw-v0.1.0.dmg
+NoClaw.spec

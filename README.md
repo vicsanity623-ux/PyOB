@@ -70,45 +70,82 @@ Interactive terminal checkpoints at every stage:
 
 ## 🚀 Getting Started
 
-### Prerequisites
+NoClaw can be used either as a pre-compiled standalone application (Recommended) or by running the source code directly.
+
+### 📋 Prerequisites
+
+Regardless of installation method, NoClaw utilizes external tools for code verification and local LLM fallback.
 
 | Requirement | Purpose | Required? |
 |---|---|---|
-| **Python 3.10+** | Runtime | ✅ Yes |
-| **`requests`** | Gemini API communication | ✅ Yes |
-| **`ollama`** (Python package) | Local LLM fallback | ⚡ Recommended |
-| **[Ollama](https://ollama.ai)** (application) | Local model server | ⚡ Recommended |
+| **[Ollama](https://ollama.ai)** | Local model server (fallback) | ⚡ Recommended |
 | **`ruff`** | Python linting & formatting | ⚡ Recommended |
 | **`mypy`** | Static type checking | ⚡ Recommended |
 | **Node.js** | JavaScript syntax validation | Optional |
 
-### Installation
+---
 
+### 📦 Option 1: Standalone Installation (End-Users)
+
+Download the latest pre-built binaries from the **[Releases Page](https://github.com/vicsanity623/NoClaw/releases)**.
+
+#### **macOS (.dmg)**
+1. **Download and Mount:** Open `NoClaw-v0.1.0.dmg`.
+2. **Install:** Drag the **NoClaw** icon into your `/Applications` folder.
+3. **Launch:** Open NoClaw via Spotlight (`Cmd + Space` > "NoClaw").
+4. **Setup:** A Terminal window will open automatically. Follow the prompts to enter your Gemini API keys and select your AI models. These settings are saved to `~/.noclaw_config`.
+
+#### **Windows (.exe)**
+1. **Download:** Save `NoClaw.exe` to a known directory.
+2. **Launch:** Double-click the executable or run it via PowerShell/CMD.
+3. **Setup:** Follow the on-screen prompts to configure your API keys and model preferences.
+
+---
+
+### 🛠️ Option 2: Running from Source (Developers)
+
+Use this method if you wish to modify NoClaw or contribute to its development.
+
+#### **1. Environment Setup**
 ```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/NoClaw.git
+# Clone the repository
+git clone https://github.com/vicsanity623/NoClaw.git
 cd NoClaw
 
-# 2. Install Python dependencies
+# Install Python dependencies (Python 3.10+ required)
 pip install requests ollama
 
-# 3. (Recommended) Install linting tools
+# Install linting tools for verification pipeline
 pip install ruff mypy
+```
 
-# 4. (Recommended) Pull the local Ollama model for offline fallback
+#### **2. Local Model Preparation**
+If you intend to use the local fallback feature, pull the recommended model:
+```bash
 ollama pull qwen3-coder:30b
 ```
 
-### Quick Start
-
+#### **3. Execution**
+Run the launcher directly. On the first run, you will be prompted to configure your API keys and model settings.
 ```bash
-# Point NoClaw at your project directory
-python entrance.py /path/to/your/project
-
-# Or run from inside your project
-cd /path/to/your/project
-python /path/to/NoClaw/entrance.py .
+python noclaw_launcher.py
 ```
+
+---
+
+### 🎯 Quick Start Workflow
+
+Once launched and configured, NoClaw follows this operational flow:
+
+1.  **Project Targeting:** Enter the full path to the project you wish to analyze.
+2.  **Bootstrap:** NoClaw generates `ANALYSIS.md` (project map) and `SYMBOLS.json` (dependency graph).
+3.  **Autonomous Loop:** The system targets files based on dependency ripple logic.
+4.  **Interactive Checkpoints:** NoClaw will pause for your approval before applying any surgical XML edits.
+    -   Type `FULL_DIFF` to see the proposed changes.
+    -   Type `EDIT_XML` or `EDIT_CODE` to refine the output.
+    -   Hit `ENTER` to commit the patch.
+5.  **Verification:** The system runs the 4-layer pipeline (XML Match → Lint → PIR → Runtime Test) to ensure the code is functional.
+6.  **Persistence:** Your `MEMORY.md` and `HISTORY.md` are updated to maintain context for the next iteration.
 
 NoClaw will:
 1. 🔍 **Bootstrap** — Generate `ANALYSIS.md` (project map) and `SYMBOLS.json` (dependency graph)
