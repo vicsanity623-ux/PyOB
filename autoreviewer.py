@@ -29,7 +29,8 @@ from prompts_and_memory import PromptsAndMemoryMixin
 
 
 class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
-    _shared_cooldowns = None
+    # FIXED: Added explicit type annotation for the shared class variable
+    _shared_cooldowns: dict[str, float] | None = None
 
     def __init__(self, target_dir: str):
         self.target_dir = os.path.abspath(target_dir)
@@ -48,8 +49,9 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         self._ensure_prompt_files()
 
         if AutoReviewer._shared_cooldowns is None:
+            # FIXED: Used 0.0 (float) instead of 0 (int) to match type dict[str, float]
             AutoReviewer._shared_cooldowns = {
-                key: 0 for key in GEMINI_API_KEYS if key.strip()
+                key: 0.0 for key in GEMINI_API_KEYS if key.strip()
             }
 
         self.key_cooldowns = AutoReviewer._shared_cooldowns
@@ -165,7 +167,8 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 logger.info("Prompt augmented with user input.")
             else:
                 logger.info("No augmentation provided.")
-        attempts = 0
+
+        attempts: int = int(0)
         use_ollama = False
         while True:
             key = None
@@ -399,7 +402,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
 
     def run_linter_fix_loop(self, context_of_change: str = "") -> bool:
         logger.info("\n🧹 Validating codebase syntax (Python, JS, CSS)...")
-        success = True
+        success: bool = True
         try:
             subprocess.run(["ruff", "format", self.target_dir], capture_output=True)
             res = subprocess.run(
@@ -409,7 +412,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 logger.warning(f"⚠️ Ruff found errors:\n{res.stdout.strip()}")
                 py_fixed = False
                 for attempt in range(3):
-                    file_errors = {}
+                    file_errors: dict[str, list[str]] = {}
                     for line in res.stdout.splitlines():
                         if ".py:" in line:
                             filepath = line.split(":")[0].strip()
@@ -474,13 +477,16 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             for file in files:
                 if file.endswith(".css") and file not in IGNORE_FILES:
                     path = os.path.join(root, file)
-                    with open(path, "r", encoding="utf-8") as f:
-                        css_content = f.read()
-                    if css_content.count("{") != css_content.count("}"):
-                        logger.error(
-                            f"❌ CSS Syntax Error in {file}: Unbalanced braces."
-                        )
-                        success = False
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            css_content = f.read()
+                        if css_content.count("{") != css_content.count("}"):
+                            logger.error(
+                                f"❌ CSS Syntax Error in {file}: Unbalanced braces."
+                            )
+                            success = False
+                    except Exception:
+                        pass
         return success
 
     def _apply_linter_fixes(
@@ -517,9 +523,8 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         entry_file = self._find_entry_file()
         if not entry_file:
             return True
-        
-        # ADDED: PYINSTALLER FIX - Find the system Python if running as a DMG
-        if getattr(sys, 'frozen', False):
+
+        if getattr(sys, "frozen", False):
             python_cmd = shutil.which("python3") or shutil.which("python") or "python3"
         else:
             python_cmd = sys.executable
@@ -529,7 +534,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 f"\n🚀 PHASE 4: Runtime Verification. Launching {os.path.basename(entry_file)} for 10 seconds (Attempt {attempt + 1}/3)..."
             )
             process = subprocess.Popen(
-                [python_cmd, entry_file], # USE python_cmd here
+                [python_cmd, entry_file],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -545,7 +550,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     stdout, stderr = process.communicate()
-            
             error_keywords = [
                 "Traceback (most recent call last):",
                 "Exception:",
@@ -560,7 +564,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             if not has_crash and "Traceback" not in stdout:
                 logger.info("✅ App ran successfully for 10 seconds with no crashes.")
                 return True
-            
             logger.warning(f"⚠️ App crashed or threw runtime errors!\n{stderr}")
             self._fix_runtime_errors(
                 stderr + "\n" + stdout, entry_file, context_of_change
@@ -591,20 +594,34 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 python_cmd = sys.executable
 
             try:
-                # ADDED: --break-system-packages flag for macOS Homebrew compliance
-                subprocess.run([python_cmd, "-m", "pip", "install", pkg, "--break-system-packages"], check=True)
                 subprocess.run(
-                    [python_cmd, "-m", "pip", "install", f"types-{pkg}", "--break-system-packages"],
+                    [
+                        python_cmd,
+                        "-m",
+                        "pip",
+                        "install",
+                        pkg,
+                        "--break-system-packages",
+                    ],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        python_cmd,
+                        "-m",
+                        "pip",
+                        "install",
+                        f"types-{pkg}",
+                        "--break-system-packages",
+                    ],
                     capture_output=True,
                 )
                 logger.info(
-                    f"✅ Successfully installed {pkg}. System will now retry launch."
+                    "✅ Successfully installed {pkg}. System will now retry launch."
                 )
                 return
             except subprocess.CalledProcessError as e:
                 logger.error(f"❌ Failed to install {pkg} automatically: {e}")
-
-        # --- AI Healing logic below ---
         tb_files = re.findall(r'File "([^"]+)"', logs)
         target_file = entry_file
         for f in reversed(tb_files):
@@ -1010,16 +1027,22 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                     if not success:
                         self.restore_workspace(backup_state)
                         logger.warning("🔄 Rollback performed due to unfixable errors.")
+
+                        failure_report = f"\n\n### ❌ FAILURE ATTEMPT LOGS ({time.strftime('%Y-%m-%d %H:%M:%S')})\n"
+                        failure_report += "\n".join(self.session_context[-3:])
+
                         if os.path.exists(self.pr_file):
-                            os.replace(self.pr_file, self.failed_pr_file)
-                            logger.warning(
-                                f"📦 Moved failed PR to {FAILED_PR_FILE_NAME} to start fresh."
-                            )
+                            content = open(self.pr_file).read()
+                            with open(self.failed_pr_file, "w") as f:
+                                f.write(content + failure_report)
+                            os.remove(self.pr_file)
+
                         if os.path.exists(self.feature_file):
-                            os.replace(self.feature_file, self.failed_feature_file)
-                            logger.info(
-                                f"📦 Moved failed Feature to {FAILED_FEATURE_FILE_NAME} to start fresh."
-                            )
+                            content = open(self.feature_file).read()
+                            with open(self.failed_feature_file, "w") as f:
+                                f.write(content + failure_report)
+                            os.remove(self.feature_file)
+
                     changes_made = True
                 elif user_input == "DELETE":
                     if os.path.exists(self.pr_file):
@@ -1071,16 +1094,21 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                             logger.warning(
                                 "🔄 Rollback performed due to unfixable errors."
                             )
+
+                            failure_report = f"\n\n### ❌ FAILURE ATTEMPT LOGS ({time.strftime('%Y-%m-%d %H:%M:%S')})\n"
+                            failure_report += "\n".join(self.session_context[-3:])
+
                             if os.path.exists(self.pr_file):
-                                os.replace(self.pr_file, self.failed_pr_file)
-                                logger.warning(
-                                    f"📦 Moved failed PR to {FAILED_PR_FILE_NAME} to start fresh."
-                                )
+                                content = open(self.pr_file).read()
+                                with open(self.failed_pr_file, "w") as f:
+                                    f.write(content + failure_report)
+                                os.remove(self.pr_file)
+
                             if os.path.exists(self.feature_file):
-                                os.replace(self.feature_file, self.failed_feature_file)
-                                logger.info(
-                                    f"📦 Moved failed Feature to {FAILED_FEATURE_FILE_NAME} to start fresh."
-                                )
+                                content = open(self.feature_file).read()
+                                with open(self.failed_feature_file, "w") as f:
+                                    f.write(content + failure_report)
+                                os.remove(self.feature_file)
                     else:
                         logger.info(
                             "Changes not applied manually. They will remain for the next loop iteration."

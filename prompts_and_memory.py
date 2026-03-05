@@ -5,11 +5,18 @@ from core_utils import logger
 
 
 class PromptsAndMemoryMixin:
-    def _ensure_prompt_files(self):
+    # --- Mypy Type Hints (Attributes expected to be provided by AutoReviewer) ---
+    target_dir: str
+    history_path: str
+    analysis_path: str
+    memory_file: str
+    memory: str
+
+    def _ensure_prompt_files(self) -> None:
         templates = {
             "UM.md": "You are the NoClaw Memory Manager. Your job is to update MEMORY.md.\n\n### Current Memory:\n{current_memory}\n\n### Recent Actions:\n{session_summary}\n\n### INSTRUCTIONS:\n1. Update the memory with the Recent Actions.\n2. CRITICAL: Keep the ENTIRE document under 250 words. Be ruthless. Delete old, irrelevant details.\n3. Keep lists strictly to bullet points. No long paragraphs.\n4. Respond EXCLUSIVELY with the raw markdown for MEMORY.md. Do not use ```markdown fences or <THOUGHT> blocks.",
             "RM.md": "You are the NoClaw Memory Manager. The current MEMORY.md is too bloated and is breaking the AI context window.\n\n### Bloated Memory:\n{current_memory}\n\n### INSTRUCTIONS:\n1. AGGRESSIVELY COMPRESS this memory. \n2. Delete duplicate information, repetitive logs, and obvious statements.\n3. Keep ONLY the core architectural rules and crucial file dependencies.\n4. The final output MUST BE UNDER 150 WORDS.\n5. Respond EXCLUSIVELY with the raw markdown. No fences, no thoughts.",
-            "PP.md": "You are an elite NoClaw Software Engineer. Analyze the code for bugs or architectural gaps.\n\n{memory_section}{ruff_section}{mypy_section}{custom_issues_section}### Source Code:\n```{lang_tag}\n{content}\n```\n\n### CRITICAL RULES:\n1. **SURGICAL FIXES**: Every <SEARCH> block must be exactly 2-5 lines.\n2. **NO HALLUCINATIONS**: Do not invent bugs. If the code is functional, state 'The code looks good.'\n3. **MISSING IMPORTS**: If you use a new module/type, you MUST add an <EDIT> block to import it at the top.\n4. **INDENTATION IS SYNTAX**: Your <REPLACE> blocks must have perfect, absolute indentation.\n5. **DEFEATING MYPY**: If you are fixing a Mypy `[union-attr]` or `None` error, adding a type hint is NOT enough. You MUST insert `assert variable_name is not None` before the variable is used, or append `# type: ignore` to the failing line.\n\n### HOW TO RESPOND (CHOOSE ONE):\n\n**SCENARIO A: Code has bugs and needs edits:**\n<THOUGHT>\nSummary: ...\nEvaluation: ...\nImports Required: [List exact import paths or 'None']\nAction: I will fix X by doing Y.\n</THOUGHT>\n<EDIT>\n<SEARCH>\nExact lines to replace\n</SEARCH>\n<REPLACE>\nNew lines\n</REPLACE>\n</EDIT>\n\n**SCENARIO B: Code is perfect. NO EDITS NEEDED:**\n<THOUGHT>\nSummary: ...\nEvaluation: ...\nAction: The code looks good. No fixes needed.\n</THOUGHT>",
+            "PP.md": "You are an elite NoClaw Software Engineer. Analyze the code for bugs or architectural gaps.\n\n{memory_section}{ruff_section}{mypy_section}{custom_issues_section}### Source Code:\n```{lang_tag}\n{content}\n```\n\n### CRITICAL RULES:\n1. **SURGICAL FIXES**: Every <SEARCH> block must be exactly 2-5 lines.\n2. **NO HALLUCINATIONS**: Do not invent bugs. If the code is functional, state 'The code looks good.'\n3. **MISSING IMPORTS**: If you use a new module/type, you MUST add an <EDIT> block to import it at the top.\n4. **INDENTATION IS SYNTAX**: Your <REPLACE> blocks must have perfect, absolute indentation. If you remove a parent block (like `try` or `if`), you MUST dedent its children.\n5. **DEFEATING MYPY**: If you are fixing a Mypy `[union-attr]` or `None` error, adding a type hint is NOT enough. You MUST insert `assert variable_name is not None` before the variable is used, or append `# type: ignore` to the failing line.\n\n### HOW TO RESPOND (CHOOSE ONE):\n\n**SCENARIO A: Code has bugs and needs edits:**\n<THOUGHT>\nSummary: ...\nEvaluation: ...\nImports Required: [List exact import paths or 'None']\nAction: I will fix X by doing Y.\n</THOUGHT>\n<EDIT>\n<SEARCH>\nExact lines to replace\n</SEARCH>\n<REPLACE>\nNew lines\n</REPLACE>\n</EDIT>\n\n**SCENARIO B: Code is perfect. NO EDITS NEEDED:**\n<THOUGHT>\nSummary: ...\nEvaluation: ...\nAction: The code looks good. No fixes needed.\n</THOUGHT>",
             "ALF.md": "You are an elite developer fixing syntax errors.\nThe file `{rel_path}` failed validation with these exact errors:\n{err_text}\n\n### Current Code:\n```\n{code}\n```\n\n### Instructions:\n1. Fix the syntax errors (like stray brackets, unexpected tokens, or indentation) using surgical XML edits.\n2. Respond EXCLUSIVELY with a <THOUGHT> block followed by ONE OR MORE <EDIT> blocks.\n3. Ensure your edits perfectly align with the surrounding brackets.",
             "FRE.md": "You are an elite NoClaw developer fixing runtime crashes.\n{memory_section}The application crashed during a test run.\n\n### Crash Logs & Traceback:\n{logs}\n\nThe traceback indicates the error occurred in `{rel_path}`.\n\n### Current Code of `{rel_path}`:\n```python\n{code}\n```\n\n### Instructions:\n1. Identify the EXACT root cause of the crash.\n2. Fix the error using surgical XML edits.\n3. Respond EXCLUSIVELY with a <THOUGHT> block followed by ONE OR MORE <EDIT> blocks.\n\n### REQUIRED XML FORMAT:\n<THOUGHT>\nExplanation of root cause...\nImports Needed: [List new imports required or 'None']\n</THOUGHT>\n<EDIT>\n<SEARCH>\nExact lines to replace\n</SEARCH>\n<REPLACE>\nNew replacement lines\n</REPLACE>\n</EDIT>",
             "PF.md": "You are the NoClaw Product Architect. Review the source code and suggest ONE highly useful, INTERACTIVE feature.\n\n{memory_section}### Source Code:\n```{lang_tag}\n{content}\n```\n\n### CRITICAL RULES:\n1. Suggest an INTERACTIVE feature (UI elements, buttons, menus).\n2. MULTI-FILE ORCHESTRATION: If your feature requires changes to other files (e.g., adding an argument to a constructor in logic.py that main.py calls), you MUST explicitly list the filenames of the other files that will need updates in your <THOUGHT> block.\n3. The <SNIPPET> block MUST contain ONLY the new logic/functions for the CURRENT file.\n4. DO NOT output the entire file or existing functions in the <SNIPPET>.\n5. If editing a LOGIC file, explain in <THOUGHT> how the UI will eventually connect to it.\n6. If editing a UI file, look for 'Orphaned Logic' in the Project Summary and connect to it.\n\n### REQUIRED XML FORMAT:\n<THOUGHT>\n...\n</THOUGHT>\n<SNIPPET>\n# ONLY the new code here\ndef new_method(self):\n pass\n</SNIPPET>",
@@ -22,7 +29,7 @@ class PromptsAndMemoryMixin:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
 
-    def load_prompt(self, filename: str, **kwargs) -> str:
+    def load_prompt(self, filename: str, **kwargs: str) -> str:
         filepath = os.path.join(self.target_dir, filename)
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -54,13 +61,15 @@ class PromptsAndMemoryMixin:
         analysis_path = os.path.join(self.target_dir, "ANALYSIS.md")
         if os.path.exists(analysis_path):
             with open(analysis_path, "r", encoding="utf-8") as f:
-                header = f.read().split("## 📂 File Directory")[0].strip()
+                content = f.read()
+                # Split and take header safely
+                header_parts = content.split("## 📂 File Directory")
+                header = header_parts[0].strip() if header_parts else ""
                 context += f"### Project Goal:\n{header}\n\n"
 
         # 2. Compact History (Reduced from 5 to the last 3 edits)
-        history_path = os.path.join(self.target_dir, "HISTORY.md")
-        if os.path.exists(history_path):
-            with open(history_path, "r", encoding="utf-8") as f:
+        if os.path.exists(self.history_path):
+            with open(self.history_path, "r", encoding="utf-8") as f:
                 hist = f.read()
                 headers = [line for line in hist.split("\n") if line.startswith("## ")]
                 # Only grab the last 3 files edited to save tokens
@@ -86,21 +95,25 @@ class PromptsAndMemoryMixin:
 
         return context
 
-    def update_memory(self):
-        if not self.session_context:
+    def update_memory(self) -> None:
+        # Note: session_context is expected on the child class (AutoReviewer)
+        # We access it dynamically to avoid Mixin attribute errors
+        session_context: list[str] = getattr(self, "session_context", [])
+        if not session_context:
             return
         logger.info("\n💾 PHASE 5: Updating MEMORY.md with session context...")
-        session_summary = "\n".join(f"- {item}" for item in self.session_context)
+        session_summary = "\n".join(f"- {item}" for item in session_context)
         prompt = self.load_prompt(
             "UM.md",
             current_memory=self.memory if self.memory else "No previous memory.",
             session_summary=session_summary,
         )
 
-        def validator(text):
+        def validator(text: str) -> bool:
             return bool(text.strip())
 
-        llm_response = self.get_valid_llm_response(
+        # get_valid_llm_response is provided by CoreUtilsMixin/AutoReviewer
+        llm_response = getattr(self, "get_valid_llm_response")(
             prompt, validator, context="Memory Update"
         )
         clean_memory = re.sub(
@@ -112,16 +125,16 @@ class PromptsAndMemoryMixin:
                 f.write(clean_memory)
             self.memory = clean_memory
 
-    def refactor_memory(self):
+    def refactor_memory(self) -> None:
         if not self.memory:
             return
         logger.info("\n🧹 PHASE 6: Cleanup! Summarizing and refactoring MEMORY.md...")
         prompt = self.load_prompt("RM.md", current_memory=self.memory)
 
-        def validator(text):
+        def validator(text: str) -> bool:
             return bool(text.strip())
 
-        llm_response = self.get_valid_llm_response(
+        llm_response = getattr(self, "get_valid_llm_response")(
             prompt, validator, context="Memory Refactor"
         )
         clean_memory = re.sub(

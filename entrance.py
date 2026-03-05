@@ -30,25 +30,33 @@ class TargetedReviewer(AutoReviewer):
 class EntranceController:
     def __init__(self, target_dir: str):
         self.target_dir = os.path.abspath(target_dir)
+        # Check if we should skip dashboard (for recursive test runs)
+        self.skip_dashboard = "--no-dashboard" in sys.argv
+
         self.analysis_path = os.path.join(self.target_dir, "ANALYSIS.md")
         self.history_path = os.path.join(self.target_dir, "HISTORY.md")
         self.symbols_path = os.path.join(self.target_dir, "SYMBOLS.json")
         self.llm_engine = AutoReviewer(self.target_dir)
         self.ledger = self.load_ledger()
-        self.cascade_queue = []
-        self.cascade_diffs = {}
+
+        # FIXED: Added Type Annotations for Mypy
+        self.cascade_queue: list[str] = []
+        self.cascade_diffs: dict[str, str] = {}
+
         self.current_iteration = 1
-        self.start_dashboard()
+
+        if not self.skip_dashboard:
+            self.start_dashboard()
 
     def start_dashboard(self):
         # 1. Build the physical file for the user to see
         obs_path = os.path.join(self.target_dir, "observer.html")
         with open(obs_path, "w", encoding="utf-8") as f:
             f.write(OBSERVER_HTML)
-        
+
         # 2. Set the controller reference for the handler
         ObserverHandler.controller = self
-        
+
         # 3. Start the background server
         def run_server():
             try:
@@ -56,15 +64,15 @@ class EntranceController:
                 server.serve_forever()
             except Exception as e:
                 logger.error(f"Dashboard failed to start: {e}")
-        
+
         threading.Thread(target=run_server, daemon=True).start()
-        
+
         # 4. Notify the user with a Cyberpunk banner
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("⚡ NOCLAW OBSERVER IS LIVE")
-        print(f"🔗 URL: http://localhost:5000")
+        print("🔗 URL: http://localhost:5000")
         print(f"📂 FILE: {obs_path}")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
     def load_ledger(self):
         if os.path.exists(self.symbols_path):
@@ -118,19 +126,26 @@ class EntranceController:
         else:
             target_rel_path = self.pick_target_file()
             is_cascade = False
-        
+
         if not target_rel_path:
             return
 
-        # Identify if NoClaw is targeting its own nervous system
-        engine_files = ["autoreviewer.py", "core_utils.py", "prompts_and_memory.py", "entrance.py"]
+        # --- RECURSIVE SAFETY PATCH ---
+        engine_files = [
+            "autoreviewer.py",
+            "core_utils.py",
+            "prompts_and_memory.py",
+            "entrance.py",
+        ]
         if any(f in target_rel_path for f in engine_files):
             timestamp = time.strftime("%H%M%S")
             pod_name = f"safety_pod_v{iteration}_{timestamp}"
             pod_path = os.path.join(self.target_dir, pod_name)
             try:
                 os.makedirs(pod_path, exist_ok=True)
-                logger.warning(f"🛡️ SELF-EVOLUTION DETECTED: Sheltering engine source in {pod_name}")
+                logger.warning(
+                    f"🛡️ SELF-EVOLUTION DETECTED: Sheltering engine source in {pod_name}"
+                )
                 for f_name in engine_files:
                     src = os.path.join(self.target_dir, f_name)
                     if os.path.exists(src):
@@ -143,7 +158,7 @@ class EntranceController:
         if is_cascade and target_diff:
             msg = f"CRITICAL SYMBOLIC RIPPLE: This file depends on code that was just modified. Ensure this file is updated to support these changes:\n\n### DEPDENDENCY CHANGE DIFF:\n{target_diff}"
             self.llm_engine.session_context.append(msg)
-        
+
         old_content = ""
         if os.path.exists(target_abs_path):
             with open(target_abs_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -152,32 +167,37 @@ class EntranceController:
         reviewer = TargetedReviewer(self.target_dir, target_abs_path)
         reviewer.session_context = self.llm_engine.session_context[:]
         reviewer.run_pipeline(iteration)
-        
+
         new_content = ""
         if os.path.exists(target_abs_path):
             with open(target_abs_path, "r", encoding="utf-8", errors="ignore") as f:
                 new_content = f.read()
 
+        # Brain-to-Queue Intent Detection
         all_text_context = " ".join(self.llm_engine.session_context).lower()
         for other_file in self.llm_engine.scan_directory():
             rel_other = os.path.relpath(other_file, self.target_dir)
             if rel_other != target_rel_path and rel_other in all_text_context:
                 if rel_other not in self.cascade_queue:
-                    logger.warning(f"🧠 AI INTENT DETECTED: Queuing {rel_other} for follow-up.")
+                    logger.warning(
+                        f"🧠 AI INTENT DETECTED: Queuing {rel_other} for follow-up."
+                    )
                     self.cascade_queue.append(rel_other)
 
         logger.info(f"🔄 Refreshing metadata for `{target_rel_path}`...")
         self.update_analysis_for_single_file(target_abs_path, target_rel_path)
         self.update_ledger_for_file(target_rel_path, new_content)
-        
+
         if old_content != new_content:
             logger.info(
                 f"📝 Edit successful. Checking ripples and running final verification for {target_rel_path}..."
             )
             self.append_to_history(target_rel_path, old_content, new_content)
+            # FIXED: Change splitlines(1) to keepends=True for Mypy
             current_diff = "".join(
                 difflib.unified_diff(
-                    old_content.splitlines(1), new_content.splitlines(1)
+                    old_content.splitlines(keepends=True),
+                    new_content.splitlines(keepends=True),
                 )
             )
             ripples = self.detect_symbolic_ripples(
@@ -191,7 +211,7 @@ class EntranceController:
                     if r not in self.cascade_queue:
                         self.cascade_queue.append(r)
                         self.cascade_diffs[r] = current_diff
-            
+
             logger.info("\n" + "=" * 20 + " FINAL VERIFICATION " + "=" * 20)
             if not self._run_final_verification_and_heal(backup_state):
                 logger.error(
@@ -225,9 +245,15 @@ class EntranceController:
             else:
                 python_cmd = sys.executable
 
+            # --- RECURSIVE PORT SAFETY ---
+            # If we are testing NoClaw itself, disable the dashboard in the child process
+            cmd = [python_cmd, entry_file]
+            if os.path.basename(entry_file) == "entrance.py":
+                cmd.append("--no-dashboard")
+
             start_time = time.time()
             process = subprocess.Popen(
-                [python_cmd, entry_file],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -236,17 +262,12 @@ class EntranceController:
 
             stdout, stderr = "", ""
             try:
-                # We wait up to 10 seconds
                 stdout, stderr = process.communicate(timeout=10)
             except subprocess.TimeoutExpired:
-                # The app stayed open for 10s (normal for GUIs). Kill it so we can read the logs.
                 process.terminate()
                 stdout, stderr = process.communicate()
 
             duration = time.time() - start_time
-
-            # CRITICAL FIX: Check BOTH stdout and stderr for errors!
-            # (PyQt sometimes routes tracebacks to stdout)
             has_error_logs = any(
                 kw in stderr or kw in stdout
                 for kw in [
@@ -258,7 +279,6 @@ class EntranceController:
                 ]
             )
 
-            # If it exited with a crash code (not 0 or 15/SIGTERM) OR threw a traceback
             is_crash_code = process.returncode not in (0, 15, -15, None)
 
             if is_crash_code or has_error_logs:
@@ -302,13 +322,16 @@ class EntranceController:
     def pick_target_file(self) -> str:
         analysis = self._read_file(self.analysis_path)
         history = self._read_file(self.history_path) or "No history yet."
-        # We explicitly track the last file to prevent loops
         last_file = ""
         history_lines = history.strip().split("\n")
         for line in reversed(history_lines):
             if line.startswith("## "):
-                last_file = line.split("`")[1]
-                break
+                # Extraction logic for `filename`
+                match = re.search(r"`([^`]+)`", line)
+                if match:
+                    last_file = match.group(1)
+                    break
+
         prompt = f"""
 Read the ANALYSIS.md and HISTORY.md. Choose ONE relative file path to review next.
 CRITICAL RULES:
@@ -353,12 +376,10 @@ Reply ONLY with the relative file path.
                 full_code = f.read()
             self.update_ledger_for_file(rel, full_code)
             structure_dropdowns = self.generate_structure_dropdowns(f_path, full_code)
-            # IMPROVED PROMPT: Prevents the AI from regurgitating the dropdown code
             sum_prompt = f"Provide a one-sentence plain text summary of what the file `{rel}` does. \n\nCRITICAL: Do NOT include any HTML tags, <details> blocks, or code signatures in your response. Just the sentence.\n\nFile Structure for context:\n{structure_dropdowns}"
             desc = self.llm_engine.get_valid_llm_response(
                 sum_prompt, lambda t: "<details>" not in t and len(t) > 5, context=rel
             ).strip()
-            # Clean structure: Summary on one line, dropdowns below
             content += (
                 f"### `{rel}`\n**Summary:** {desc}\n\n{structure_dropdowns}\n---\n"
             )
@@ -377,11 +398,9 @@ Reply ONLY with the relative file path.
         desc = self.llm_engine.get_valid_llm_response(
             sum_prompt, lambda t: "<details>" not in t and len(t) > 5, context=rel_path
         ).strip()
-        # New clean block format
         new_block = f"### `{rel_path}`\n**Summary:** {desc}\n\n" + structure + "\n---\n"
         with open(self.analysis_path, "r", encoding="utf-8") as f:
             analysis_text = f.read()
-        # Pattern matches from the file header until the next file header or end of file
         pattern = rf"### `{re.escape(rel_path)}`.*?(?=### `|---\n\Z)"
         updated = re.sub(pattern, new_block, analysis_text, flags=re.DOTALL)
         with open(self.analysis_path, "w", encoding="utf-8") as f:
@@ -430,12 +449,10 @@ Reply ONLY with the relative file path.
                 elif isinstance(node, ast.ClassDef):
                     classes.append(f"class {node.name}")
                 elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    # Extract argument names (excluding 'self')
                     args = []
                     for arg in node.args.args:
                         if arg.arg != "self":
                             args.append(arg.arg)
-                    # Handle *args and **kwargs
                     if node.args.vararg:
                         args.append(f"*{node.args.vararg.arg}")
                     if node.args.kwarg:
@@ -453,10 +470,6 @@ Reply ONLY with the relative file path.
     def _parse_javascript(self, code: str) -> str:
         imports = re.findall(r"(?:import|from|require)\s+['\"].*?['\"]", code)
         classes = re.findall(r"class\s+([a-zA-Z0-9_$]+)", code)
-        # Enhanced Regex to capture function names AND their parameters
-        # 1. Standard: function name(params)
-        # 2. Arrows: const name = (params) =>
-        # 3. Methods: name(params) {
         fn_patterns = [
             r"function\s+([a-zA-Z0-9_$]+)\s*\(([^)]*)\)",
             r"(?:const|let|var|window\.)\s*([a-zA-Z0-9_$]+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>",
@@ -515,7 +528,6 @@ Reply ONLY with the relative file path.
 
     def _format_dropdowns(self, imp, cls, fn, cnst):
         res = ""
-        # We sort them to keep ANALYSIS.md consistent and easier for the AI to parse
         if imp:
             res += f"<details><summary>Imports ({len(imp)})</summary>{'<br>'.join(sorted(imp))}</details>\n"
         if cnst:
@@ -527,10 +539,11 @@ Reply ONLY with the relative file path.
         return res
 
     def append_to_history(self, rel_path: str, old_code: str, new_code: str):
+        # FIXED: Change splitlines(1) to keepends=True for Mypy
         diff_lines = list(
             difflib.unified_diff(
-                old_code.splitlines(1),
-                new_code.splitlines(1),
+                old_code.splitlines(keepends=True),
+                new_code.splitlines(keepends=True),
                 fromfile="Original",
                 tofile="Proposed",
             )
@@ -557,6 +570,7 @@ Reply ONLY with the relative file path.
             with open(f, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read()
         return ""
+
 
 OBSERVER_HTML = """
 <!DOCTYPE html>
@@ -637,6 +651,7 @@ OBSERVER_HTML = """
 </html>
 """
 
+
 class ObserverHandler(BaseHTTPRequestHandler):
     controller = None
 
@@ -646,20 +661,24 @@ class ObserverHandler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            
+
             status = {
-                "iteration": getattr(self.controller, 'current_iteration', 1),
+                "iteration": getattr(self.controller, "current_iteration", 1),
                 "cascade_queue": self.controller.cascade_queue,
                 "ledger_stats": {
                     "definitions": len(self.controller.ledger["definitions"]),
-                    "references": len(self.controller.ledger["references"])
+                    "references": len(self.controller.ledger["references"]),
                 },
                 "analysis": self.controller._read_file(self.controller.analysis_path),
-                "memory": self.controller._read_file(os.path.join(self.controller.target_dir, "MEMORY.md")),
-                "history": self.controller._read_file(self.controller.history_path)[-5000:]
+                "memory": self.controller._read_file(
+                    os.path.join(self.controller.target_dir, "MEMORY.md")
+                ),
+                "history": self.controller._read_file(self.controller.history_path)[
+                    -5000:
+                ],
             }
             self.wfile.write(json.dumps(status).encode())
-        
+
         elif self.path == "/" or self.path == "/observer.html":
             self.send_response(200)
             self.send_header("Content-type", "text/html")

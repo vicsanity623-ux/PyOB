@@ -58,6 +58,11 @@ logger = logging.getLogger(__name__)
 
 
 class CoreUtilsMixin:
+    # --- Mypy Type Hints (Attributes provided by the parent AutoReviewer) ---
+    target_dir: str
+    memory_file: str
+    key_cooldowns: dict[str, float]
+
     def get_user_approval(self, prompt_text: str, timeout: int = 220) -> str:
         print(f"\n{prompt_text}")
         start_time = time.time()
@@ -512,7 +517,29 @@ class CoreUtilsMixin:
                             "\n".join(lines[i : i + len(search_lines)])
                         )
                         if norm_search in test_block:
-                            lines[i : i + len(search_lines)] = [raw_replace]
+                            original_indent = ""
+                            if i < len(lines):
+                                line = lines[i]
+                                original_indent = line[: len(line) - len(line.lstrip())]
+
+                            replacement_lines = raw_replace.splitlines()
+                            first_rep_line = next(
+                                (line for line in replacement_lines if line.strip()), ""
+                            )
+                            rep_base_indent_len = len(first_rep_line) - len(
+                                first_rep_line.lstrip()
+                            )
+
+                            fixed_replace_lines = []
+                            for r_line in replacement_lines:
+                                if r_line.strip():
+                                    fixed_replace_lines.append(
+                                        original_indent + r_line[rep_base_indent_len:]
+                                    )
+                                else:
+                                    fixed_replace_lines.append("")
+
+                            lines[i : i + len(search_lines)] = fixed_replace_lines
                             new_code = "\n".join(lines)
                             block_applied = True
                             logger.info(
@@ -588,31 +615,43 @@ class CoreUtilsMixin:
 
     def _find_entry_file(self) -> str | None:
         FORBIDDEN = {"venv", ".venv", "autovenv", "__pycache__", "node_modules", ".git"}
-        entry_file = None
+
+        # 1. PRIORITY SEARCH: Look for NoClaw's controller or common app roots first
+        # This ensures we pick 'entrance.py' during self-evolution.
+        priority_files = [
+            "entrance.py",
+            "main.py",
+            "app.py",
+            "gui.py",
+            "noclaw_launcher.py",
+        ]
+        for f_name in priority_files:
+            target = os.path.join(self.target_dir, f_name)
+            if os.path.exists(target):
+                try:
+                    with open(target, "r", encoding="utf-8", errors="ignore") as f:
+                        if 'if __name__ == "__main__":' in f.read():
+                            return target
+                except Exception:
+                    continue
+
+        # 2. DEEP SEARCH: If no priority file, walk the directory
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in FORBIDDEN and not d.startswith(".")]
             for file in files:
-                if file in IGNORE_FILES or not file.endswith(".py"):
+                # EXCLUDE internal helper files that have main blocks only for printing warnings
+                if file in [
+                    "autoreviewer.py",
+                    "core_utils.py",
+                    "prompts_and_memory.py",
+                ] or not file.endswith(".py"):
                     continue
+
                 file_path = os.path.join(root, file)
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         if 'if __name__ == "__main__":' in f.read():
-                            entry_file = file_path
-                            break
+                            return file_path
                 except Exception:
                     continue
-            if entry_file:
-                break
-        if not entry_file:
-            for f_name in ["main.py", "app.py"]:
-                if f_name in IGNORE_FILES:
-                    continue
-                for root, dirs, files in os.walk(self.target_dir):
-                    dirs[:] = [d for d in dirs if d not in FORBIDDEN]
-                    if f_name in files:
-                        entry_file = os.path.join(root, f_name)
-                        break
-                if entry_file:
-                    break
-        return entry_file
+        return None
