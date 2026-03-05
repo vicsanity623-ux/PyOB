@@ -7,6 +7,7 @@ import time
 import logging
 import json
 import subprocess
+import shutil
 from autoreviewer import AutoReviewer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
@@ -148,21 +149,27 @@ class EntranceController:
             logger.warning("No main entry file found. Skipping runtime test.")
             return True
         rel_entry_file = os.path.relpath(entry_file, self.target_dir)
-        
+
         # 3. Execution and Healing Loop
         for attempt in range(3):
             logger.info(
                 f"🚀 Launching `{rel_entry_file}` for test... (Attempt {attempt + 1}/3)"
             )
+
+            if getattr(sys, 'frozen', False):
+                python_cmd = shutil.which("python3") or shutil.which("python") or "python3"
+            else:
+                python_cmd = sys.executable
+
             start_time = time.time()
             process = subprocess.Popen(
-                [sys.executable, entry_file],
+                [python_cmd, entry_file],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=self.target_dir,
             )
-            
+
             stdout, stderr = "", ""
             try:
                 # We wait up to 10 seconds
@@ -171,22 +178,30 @@ class EntranceController:
                 # The app stayed open for 10s (normal for GUIs). Kill it so we can read the logs.
                 process.terminate()
                 stdout, stderr = process.communicate()
-            
+
             duration = time.time() - start_time
-            
-            # CRITICAL FIX: Check BOTH stdout and stderr for errors! 
+
+            # CRITICAL FIX: Check BOTH stdout and stderr for errors!
             # (PyQt sometimes routes tracebacks to stdout)
             has_error_logs = any(
                 kw in stderr or kw in stdout
-                for kw in ["Traceback", "Exception", "Error:", "ModuleNotFoundError", "ImportError"]
+                for kw in [
+                    "Traceback",
+                    "Exception",
+                    "Error:",
+                    "ModuleNotFoundError",
+                    "ImportError",
+                ]
             )
-            
+
             # If it exited with a crash code (not 0 or 15/SIGTERM) OR threw a traceback
             is_crash_code = process.returncode not in (0, 15, -15, None)
-            
+
             if is_crash_code or has_error_logs:
                 logger.warning(f"⚠️ App crashed or threw errors after {duration:.1f}s!")
-                logger.warning(f"--- STDERR ---\n{stderr}\n--- STDOUT ---\n{stdout}\n--------------")
+                logger.warning(
+                    f"--- STDERR ---\n{stderr}\n--- STDOUT ---\n{stdout}\n--------------"
+                )
                 if attempt < 2:
                     logger.info("Attempting auto-repair...")
                     self.llm_engine._fix_runtime_errors(
@@ -195,9 +210,11 @@ class EntranceController:
                 else:
                     logger.error("❌ Exhausted all 3 auto-fix attempts.")
             else:
-                logger.info(f"✅ App ran successfully for {duration:.1f}s without tracebacks.")
+                logger.info(
+                    f"✅ App ran successfully for {duration:.1f}s without tracebacks."
+                )
                 return True
-                
+
         logger.warning(
             "Restoring workspace to pre-iteration state due to unfixable crash."
         )

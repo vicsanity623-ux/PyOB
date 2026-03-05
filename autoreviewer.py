@@ -6,6 +6,7 @@ import subprocess
 import random
 import sys
 import time
+import shutil
 
 from core_utils import (
     logger,
@@ -561,26 +562,35 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
     def _fix_runtime_errors(
         self, logs: str, entry_file: str, context_of_change: str = ""
     ):
+        """Detects crashes. Handles missing packages automatically, otherwise asks AI."""
+
         package_match = re.search(r"ModuleNotFoundError: No module named '(.*?)'", logs)
         if not package_match:
             package_match = re.search(r"ImportError: No module named '(.*?)'", logs)
+
         if package_match:
             pkg = package_match.group(1)
             logger.info(
                 f"📦 Auto-detected missing dependency: {pkg}. Attempting pip install..."
             )
+            
+            if getattr(sys, 'frozen', False):
+                python_cmd = shutil.which("python3") or shutil.which("python") or "python3"
+            else:
+                python_cmd = sys.executable
+
             try:
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", pkg], check=True
+                    [python_cmd, "-m", "pip", "install", pkg], check=True
                 )
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", f"types-{pkg}"],
+                    [python_cmd, "-m", "pip", "install", f"types-{pkg}"],
                     capture_output=True,
                 )
                 logger.info(
-                    f"✅ Successfully installed {pkg}. System will now retry launch."
+                    "✅ Successfully installed {pkg}. System will now retry launch."
                 )
-                return
+                return  
             except subprocess.CalledProcessError as e:
                 logger.error(f"❌ Failed to install {pkg} automatically: {e}")
         tb_files = re.findall(r'File "([^"]+)"', logs)
