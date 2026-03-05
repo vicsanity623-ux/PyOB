@@ -148,6 +148,7 @@ class EntranceController:
             logger.warning("No main entry file found. Skipping runtime test.")
             return True
         rel_entry_file = os.path.relpath(entry_file, self.target_dir)
+        
         # 3. Execution and Healing Loop
         for attempt in range(3):
             logger.info(
@@ -161,38 +162,42 @@ class EntranceController:
                 text=True,
                 cwd=self.target_dir,
             )
+            
             stdout, stderr = "", ""
             try:
                 # We wait up to 10 seconds
                 stdout, stderr = process.communicate(timeout=10)
             except subprocess.TimeoutExpired:
-                # If it reaches the timeout, it's a success!
+                # The app stayed open for 10s (normal for GUIs). Kill it so we can read the logs.
                 process.terminate()
                 stdout, stderr = process.communicate()
-                logger.info("✅ App ran for 10 seconds without crashing.")
-                return True
-            # If the app finished BEFORE the timeout, we check if it was a crash
+            
             duration = time.time() - start_time
+            
+            # CRITICAL FIX: Check BOTH stdout and stderr for errors! 
+            # (PyQt sometimes routes tracebacks to stdout)
             has_error_logs = any(
-                kw in stderr
-                for kw in ["Traceback", "Error:", "ModuleNotFoundError", "ImportError"]
+                kw in stderr or kw in stdout
+                for kw in ["Traceback", "Exception", "Error:", "ModuleNotFoundError", "ImportError"]
             )
-            # If it exited in less than 2 seconds with an error code or error logs, it crashed.
-            if process.returncode != 0 or has_error_logs:
-                logger.warning(f"⚠️ App crashed after {duration:.1f}s!")
-                logger.warning(f"--- STDERR ---\n{stderr}\n--------------")
+            
+            # If it exited with a crash code (not 0 or 15/SIGTERM) OR threw a traceback
+            is_crash_code = process.returncode not in (0, 15, -15, None)
+            
+            if is_crash_code or has_error_logs:
+                logger.warning(f"⚠️ App crashed or threw errors after {duration:.1f}s!")
+                logger.warning(f"--- STDERR ---\n{stderr}\n--- STDOUT ---\n{stdout}\n--------------")
                 if attempt < 2:
                     logger.info("Attempting auto-repair...")
-                    # This call now handles pip installs internally in coder.py
                     self.llm_engine._fix_runtime_errors(
                         stderr + "\n" + stdout, entry_file
                     )
                 else:
                     logger.error("❌ Exhausted all 3 auto-fix attempts.")
             else:
-                # App exited cleanly and quickly (e.g. a script that finishes a task)
-                logger.info(f"✅ App finished task successfully in {duration:.1f}s.")
+                logger.info(f"✅ App ran successfully for {duration:.1f}s without tracebacks.")
                 return True
+                
         logger.warning(
             "Restoring workspace to pre-iteration state due to unfixable crash."
         )
