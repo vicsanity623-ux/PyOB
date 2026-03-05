@@ -517,12 +517,19 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         entry_file = self._find_entry_file()
         if not entry_file:
             return True
+        
+        # ADDED: PYINSTALLER FIX - Find the system Python if running as a DMG
+        if getattr(sys, 'frozen', False):
+            python_cmd = shutil.which("python3") or shutil.which("python") or "python3"
+        else:
+            python_cmd = sys.executable
+
         for attempt in range(3):
             logger.info(
                 f"\n🚀 PHASE 4: Runtime Verification. Launching {os.path.basename(entry_file)} for 10 seconds (Attempt {attempt + 1}/3)..."
             )
             process = subprocess.Popen(
-                [sys.executable, entry_file],
+                [python_cmd, entry_file], # USE python_cmd here
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -538,6 +545,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     stdout, stderr = process.communicate()
+            
             error_keywords = [
                 "Traceback (most recent call last):",
                 "Exception:",
@@ -552,6 +560,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             if not has_crash and "Traceback" not in stdout:
                 logger.info("✅ App ran successfully for 10 seconds with no crashes.")
                 return True
+            
             logger.warning(f"⚠️ App crashed or threw runtime errors!\n{stderr}")
             self._fix_runtime_errors(
                 stderr + "\n" + stdout, entry_file, context_of_change
@@ -582,17 +591,20 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 python_cmd = sys.executable
 
             try:
-                subprocess.run([python_cmd, "-m", "pip", "install", pkg], check=True)
+                # ADDED: --break-system-packages flag for macOS Homebrew compliance
+                subprocess.run([python_cmd, "-m", "pip", "install", pkg, "--break-system-packages"], check=True)
                 subprocess.run(
-                    [python_cmd, "-m", "pip", "install", f"types-{pkg}"],
+                    [python_cmd, "-m", "pip", "install", f"types-{pkg}", "--break-system-packages"],
                     capture_output=True,
                 )
                 logger.info(
-                    "✅ Successfully installed {pkg}. System will now retry launch."
+                    f"✅ Successfully installed {pkg}. System will now retry launch."
                 )
                 return
             except subprocess.CalledProcessError as e:
                 logger.error(f"❌ Failed to install {pkg} automatically: {e}")
+
+        # --- AI Healing logic below ---
         tb_files = re.findall(r'File "([^"]+)"', logs)
         target_file = entry_file
         for f in reversed(tb_files):
