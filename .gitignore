@@ -5,5 +5,5 @@ __pycache__
 dist
 build
 build_env
-NoClaw-v0.1.0.dmg
+*.dmg
 NoClaw.spec

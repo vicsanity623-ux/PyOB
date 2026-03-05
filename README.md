@@ -90,7 +90,7 @@ Regardless of installation method, NoClaw utilizes external tools for code verif
 Download the latest pre-built binaries from the **[Releases Page](https://github.com/vicsanity623/NoClaw/releases)**.
 
 #### **macOS (.dmg)**
-1. **Download and Mount:** Open `NoClaw-v0.1.0.dmg`.
+1. **Download and Mount:** Open `NoClaw-v0.1.1.dmg`.
 2. **Install:** Drag the **NoClaw** icon into your `/Applications` folder.
 3. **Launch:** Open NoClaw via Spotlight (`Cmd + Space` > "NoClaw").
 4. **Setup:** A Terminal window will open automatically. Follow the prompts to enter your Gemini API keys and select your AI models. These settings are saved to `~/.noclaw_config`.

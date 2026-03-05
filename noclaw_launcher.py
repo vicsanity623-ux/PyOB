@@ -6,6 +6,7 @@ from pathlib import Path
 
 CONFIG_FILE = Path.home() / ".noclaw_config"
 
+
 def load_config():
     """Load config, or prompt user if missing."""
     if CONFIG_FILE.exists():
@@ -17,7 +18,7 @@ def load_config():
 
     print("🛠️  NoClaw First-Time Setup")
     print("═" * 40)
-    
+
     # 1. API Keys
     print("\n🔑 Step 1: Gemini API Keys")
     print("Enter up to 10 keys separated by commas:")
@@ -25,33 +26,35 @@ def load_config():
 
     # 2. Models with Warning
     print("\n🤖 Step 2: Model Configuration")
-    print("⚠️  WARNING: NoClaw is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'.")
+    print(
+        "⚠️  WARNING: NoClaw is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'."
+    )
     print("   Changing these may result in parsing errors or logic loops.")
-    
-    g_model = input("\nEnter Gemini Model [default: gemini-2.5-flash]: ").strip()
-    if not g_model: g_model = "gemini-2.5-flash"
-    
-    l_model = input("Enter Local Ollama Model [default: qwen3-coder:30b]: ").strip()
-    if not l_model: l_model = "qwen3-coder:30b"
 
-    config = {
-        "gemini_keys": keys,
-        "gemini_model": g_model,
-        "local_model": l_model
-    }
+    g_model = input("\nEnter Gemini Model [default: gemini-2.5-flash]: ").strip()
+    if not g_model:
+        g_model = "gemini-2.5-flash"
+
+    l_model = input("Enter Local Ollama Model [default: qwen3-coder:30b]: ").strip()
+    if not l_model:
+        l_model = "qwen3-coder:30b"
+
+    config = {"gemini_keys": keys, "gemini_model": g_model, "local_model": l_model}
 
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
-    
+
     print(f"\n✅ Configuration saved to {CONFIG_FILE}")
     print("   (To change these later, simply delete that file and restart NoClaw.)\n")
     return config
+
 
 def ensure_terminal():
     if ".app/Contents/MacOS" in sys.executable and not os.isatty(sys.stdin.fileno()):
         cmd = f'tell application "Terminal" to do script "{sys.executable}"'
         subprocess.run(["osascript", "-e", cmd])
         sys.exit(0)
+
 
 if __name__ == "__main__":
     if sys.platform == "darwin":
@@ -63,7 +66,7 @@ if __name__ == "__main__":
 
     # 1. Load Configuration
     config = load_config()
-    
+
     # 2. Inject into Environment
     os.environ["NOCLAW_GEMINI_KEYS"] = config.get("gemini_keys", "")
     os.environ["NOCLAW_GEMINI_MODEL"] = config.get("gemini_model", "gemini-2.5-flash")
@@ -104,6 +107,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n💥 Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         input("\nPress Enter to close this window...")
