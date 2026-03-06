@@ -36,6 +36,9 @@ SYMBOLS_FILE = "SYMBOLS.json"
 IGNORE_DIRS = {
     ".git",
     "autovenv",
+    "build_env",
+    "--no-dashboard",
+    "docs",
     "venv",
     ".venv",
     "code",
@@ -50,6 +53,12 @@ IGNORE_DIRS = {
 }
 IGNORE_FILES = {
     "package-lock.json",
+    "noclaw_launcher.py",
+    "build_pyinstaller_multiOS.py",
+    "ROADMAP.md",
+    "README.md",
+    "DOCUMENTATION.md",
+    "observer.html",
 }
 SUPPORTED_EXTENSIONS = {".py", ".js", ".ts", ".html", ".css", ".json", ".sh"}
 

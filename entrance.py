@@ -11,6 +11,7 @@ import shutil
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 from autoreviewer import AutoReviewer
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -79,8 +80,10 @@ class EntranceController:
             try:
                 with open(self.symbols_path, "r") as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load SYMBOLS.json, initializing empty ledger: {e}"
+                )
         return {"definitions": {}, "references": {}}
 
     def save_ledger(self):
@@ -114,7 +117,10 @@ class EntranceController:
             time.sleep(120)
 
     def execute_targeted_iteration(self, iteration: int):
+        # 1. Create a workspace-wide backup for a standard undo-point
         backup_state = self.llm_engine.backup_workspace()
+
+        # 2. Determine the iteration target
         target_diff = ""
         if self.cascade_queue:
             target_rel_path = self.cascade_queue.pop(0)
@@ -130,7 +136,8 @@ class EntranceController:
         if not target_rel_path:
             return
 
-        # --- RECURSIVE SAFETY PATCH ---
+        # --- RECURSIVE SAFETY PATCH (EXTERNAL STORAGE) ---
+        # If NoClaw targets its own engine, we save a backup OUTSIDE the scan directory
         engine_files = [
             "autoreviewer.py",
             "core_utils.py",
@@ -138,22 +145,30 @@ class EntranceController:
             "entrance.py",
         ]
         if any(f in target_rel_path for f in engine_files):
-            timestamp = time.strftime("%H%M%S")
-            pod_name = f"safety_pod_v{iteration}_{timestamp}"
-            pod_path = os.path.join(self.target_dir, pod_name)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            project_name = os.path.basename(self.target_dir)
+            # Path: ~/Documents/NoClaw_Backups/[ProjectName]/safety_pod_v[Iteration]_[Time]
+            base_backup_path = (
+                Path.home() / "Documents" / "NoClaw_Backups" / project_name
+            )
+            pod_path = base_backup_path / f"safety_pod_v{iteration}_{timestamp}"
+
             try:
-                os.makedirs(pod_path, exist_ok=True)
+                pod_path.mkdir(parents=True, exist_ok=True)
                 logger.warning(
-                    f"🛡️ SELF-EVOLUTION DETECTED: Sheltering engine source in {pod_name}"
+                    f"🛡️ SELF-EVOLUTION: Sheltering engine source EXTERNALLY in {pod_path}"
                 )
                 for f_name in engine_files:
                     src = os.path.join(self.target_dir, f_name)
                     if os.path.exists(src):
-                        shutil.copy(src, pod_path)
+                        shutil.copy(src, str(pod_path))
             except Exception as e:
-                logger.error(f"Failed to create safety pod: {e}")
+                logger.error(f"Failed to create external safety pod: {e}")
+        # -------------------------------------------------
 
         target_abs_path = os.path.join(self.target_dir, target_rel_path)
+
+        # 3. Inject Context into the Engineer
         self.llm_engine.session_context = []
         if is_cascade and target_diff:
             msg = f"CRITICAL SYMBOLIC RIPPLE: This file depends on code that was just modified. Ensure this file is updated to support these changes:\n\n### DEPDENDENCY CHANGE DIFF:\n{target_diff}"
@@ -164,16 +179,22 @@ class EntranceController:
             with open(target_abs_path, "r", encoding="utf-8", errors="ignore") as f:
                 old_content = f.read()
 
+        # 4. Run the Coder Pipeline
         reviewer = TargetedReviewer(self.target_dir, target_abs_path)
         reviewer.session_context = self.llm_engine.session_context[:]
         reviewer.run_pipeline(iteration)
+
+        # After the pipeline, transfer the reviewer's session context back to the main engine
+        # for intent detection and further processing.
+        self.llm_engine.session_context = reviewer.session_context[:]
 
         new_content = ""
         if os.path.exists(target_abs_path):
             with open(target_abs_path, "r", encoding="utf-8", errors="ignore") as f:
                 new_content = f.read()
 
-        # Brain-to-Queue Intent Detection
+        # 5. Brain-to-Queue Intent Detection
+        # Listen to the AI's thoughts to see if it mentioned other files that need updates
         all_text_context = " ".join(self.llm_engine.session_context).lower()
         for other_file in self.llm_engine.scan_directory():
             rel_other = os.path.relpath(other_file, self.target_dir)
@@ -184,6 +205,7 @@ class EntranceController:
                     )
                     self.cascade_queue.append(rel_other)
 
+        # 6. Post-Process: Update Metadata and Brain
         logger.info(f"🔄 Refreshing metadata for `{target_rel_path}`...")
         self.update_analysis_for_single_file(target_abs_path, target_rel_path)
         self.update_ledger_for_file(target_rel_path, new_content)
@@ -193,13 +215,16 @@ class EntranceController:
                 f"📝 Edit successful. Checking ripples and running final verification for {target_rel_path}..."
             )
             self.append_to_history(target_rel_path, old_content, new_content)
-            # FIXED: Change splitlines(1) to keepends=True for Mypy
+
+            # FIXED: Use keepends=True for Mypy compliance
             current_diff = "".join(
                 difflib.unified_diff(
                     old_content.splitlines(keepends=True),
                     new_content.splitlines(keepends=True),
                 )
             )
+
+            # Detect Symbolic Ripples (variable dependencies)
             ripples = self.detect_symbolic_ripples(
                 old_content, new_content, target_rel_path
             )
@@ -212,6 +237,7 @@ class EntranceController:
                         self.cascade_queue.append(r)
                         self.cascade_diffs[r] = current_diff
 
+            # 7. Final Verification and Heal
             logger.info("\n" + "=" * 20 + " FINAL VERIFICATION " + "=" * 20)
             if not self._run_final_verification_and_heal(backup_state):
                 logger.error(
@@ -414,8 +440,8 @@ Reply ONLY with the relative file path.
                 for n in ast.walk(tree):
                     if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
                         self.ledger["definitions"][n.name] = rel_path
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to parse Python AST for {rel_path}: {e}")
         elif ext in [".js", ".ts"]:
             defs = re.findall(
                 r"(?:function|class|const|var|let)\s+([a-zA-Z0-9_$]+)", code
@@ -464,7 +490,8 @@ Reply ONLY with the relative file path.
                         if isinstance(t, ast.Name) and t.id.isupper():
                             consts.append(t.id)
             return self._format_dropdowns(imports, classes, functions, consts)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to parse Python AST for dropdowns: {e}")
             return ""
 
     def _parse_javascript(self, code: str) -> str:
