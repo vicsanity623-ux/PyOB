@@ -26,9 +26,7 @@ def load_config():
 
     # 2. Models with Warning
     print("\n🤖 Step 2: Model Configuration")
-    print(
-        "⚠️  WARNING: PYOB is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'."
-    )
+    print("⚠️  WARNING: PYOB is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'.")
     print("   Changing these may result in parsing errors or logic loops.")
 
     g_model = input("\nEnter Gemini Model [default: gemini-2.5-flash]: ").strip()

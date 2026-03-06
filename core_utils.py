@@ -233,8 +233,14 @@ class CoreUtilsMixin:
     def backup_workspace(self) -> dict[str, str]:
         state: dict[str, str] = {}
         for root, dirs, files in os.walk(self.target_dir):
+            # Prune directories using the global set
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+
             for file in files:
+                # Skip ignored files
+                if file in IGNORE_FILES:
+                    continue
+
                 if any(file.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                     path = os.path.join(root, file)
                     try:
@@ -605,7 +611,7 @@ class CoreUtilsMixin:
         return new_code, explanation, all_edits_succeeded
 
     def _find_entry_file(self) -> str | None:
-        FORBIDDEN = {"venv", ".venv", "autovenv", "__pycache__", "node_modules", ".git"}
+        # PRIORITY SEARCH
         priority_files = [
             "entrance.py",
             "main.py",
@@ -617,24 +623,32 @@ class CoreUtilsMixin:
             target = os.path.join(self.target_dir, f_name)
             if os.path.exists(target):
                 try:
-                    with open(target, "r", encoding="utf-8") as f:
+                    with open(target, "r", encoding="utf-8", errors="ignore") as f:
                         if 'if __name__ == "__main__":' in f.read():
                             return target
                 except Exception:
                     continue
+
+        # DEEP SEARCH
         for root, dirs, files in os.walk(self.target_dir):
-            dirs[:] = [d for d in dirs if d not in FORBIDDEN and not d.startswith(".")]
+            # --- FIXED: Use the GLOBAL IGNORE_DIRS here ---
+            dirs[:] = [
+                d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")
+            ]
+
             for file in files:
-                if file in [
-                    "autoreviewer.py",
-                    "core_utils.py",
-                    "prompts_and_memory.py",
-                ] or not file.endswith(".py"):
+                # --- FIXED: Use the GLOBAL IGNORE_FILES here ---
+                if file in IGNORE_FILES or not file.endswith(".py"):
                     continue
+
+                # Double-check that we aren't inside an ignore dir (backup safety)
+                if any(x in root for x in IGNORE_DIRS):
+                    continue
+
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        if 'if __name__ == "__main__":' in f.read():
+                    with open(file_path, "r", encoding="utf-8") as f_obj:
+                        if 'if __name__ == "__main__":' in f_obj.read():
                             return file_path
                 except Exception:
                     continue

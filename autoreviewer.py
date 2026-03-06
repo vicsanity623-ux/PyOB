@@ -836,31 +836,37 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         if not match:
             logger.error("Could not determine target file from FEATURE.md formatting.")
             return False
+
         rel_path = match.group(1)
         target_path = os.path.join(self.target_dir, rel_path)
         lang_name, lang_tag = self.get_language_info(target_path)
-        with open(target_path, "r", encoding="utf-8") as f:
-            source_code = f.read()
 
-        # --- NEW: ARCHITECTURAL SPLIT SUPPORT ---
-        # Look for a <CREATE_FILE> tag in the AI proposal
-        new_file_match = re.search(
+        with open(target_path, "r", encoding="utf-8") as f_handle:
+            source_code = f_handle.read()
+
+        # --- TRANSACTIONAL STORAGE ---
+        created_files: list[str] = []
+
+        # Look for <CREATE_FILE> tags in the AI proposal
+        new_file_matches = re.finditer(
             r'<CREATE_FILE path="(.*?)">(.*?)</CREATE_FILE>', feature_content, re.DOTALL
         )
-        if new_file_match:
-            new_path_rel = new_file_match.group(1)
-            new_code_payload = new_file_match.group(2).strip()
+
+        for file_match in new_file_matches:
+            new_path_rel = file_match.group(1)
+            new_code_payload = file_match.group(2).strip()
             new_path_abs = os.path.join(self.target_dir, new_path_rel)
+
             if not os.path.exists(new_path_abs):
-                logger.warning(
-                    f"🏗️ ARCHITECTURAL SPLIT: Spawning new module `{new_path_rel}`"
-                )
-                with open(new_path_abs, "w", encoding="utf-8") as f:
-                    f.write(new_code_payload)
-                self.session_context.append(
-                    f"Created new architectural module: `{new_path_rel}`"
-                )
-        # ----------------------------------------
+                try:
+                    logger.warning(
+                        f"🏗️ ARCHITECTURAL SPLIT: Spawning new module `{new_path_rel}`"
+                    )
+                    with open(new_path_abs, "w", encoding="utf-8") as f_new:
+                        f_new.write(new_code_payload)
+                    created_files.append(new_path_abs)
+                except Exception as e:
+                    logger.error(f"Failed to create new module {new_path_rel}: {e}")
 
         exp_match = re.search(
             r"\*\*Explanation:\*\*(.*?)(?:###|---|>)",
@@ -872,6 +878,7 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             if exp_match
             else f"Implemented a new structural feature for: [{rel_path}]..."
         )
+
         logger.info(
             f"Implementing approved feature seamlessly directly into {rel_path}..."
         )
@@ -885,30 +892,58 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             source_code=source_code,
             rel_path=rel_path,
         )
+
         new_code, _, _ = self.get_valid_edit(
             prompt, source_code, require_edit=True, target_filepath=target_path
         )
+
         if new_code == source_code:
-            logger.error("Implementation failed. LLM did not apply valid changes.")
+            logger.error("Implementation failed. Rolling back created modules.")
+            # FIXED: Used 'file_path' instead of 'f' to avoid Mypy TextIOWrapper collision
+            for file_path in created_files:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
             return False
+
         if lang_tag == "python":
             new_code = self.ensure_imports_retained(source_code, new_code, target_path)
-        with open(target_path, "w", encoding="utf-8") as f:
-            f.write(new_code)
+
+        with open(target_path, "w", encoding="utf-8") as f_out:
+            f_out.write(new_code)
+
         if lang_tag == "python":
+            # If verification fails, clean up the newly spawned files
             if not self.run_linter_fix_loop(
                 context_of_change=feature_content
             ) or not self.run_and_verify_app(context_of_change=feature_content):
+                # FIXED: Used 'file_path' instead of 'f'
+                for file_path in created_files:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
                 return False
+
             if not self.check_downstream_breakages(target_path, rel_path):
-                logger.error(
-                    "❌ Feature implementation failed downstream type checks (Mypy)."
-                )
+                # FIXED: Used 'file_path' instead of 'f'
+                for file_path in created_files:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
                 return False
+
         logger.info(f"✅ Successfully implemented feature directly into {rel_path}.")
+
         self.session_context.append(
-            f"Successfully implemented feature directly into `{rel_path}` -> {feature_explanation}"
+            f"SUCCESSFUL CHANGE in `{rel_path}`: {feature_explanation}"
         )
+
+        if created_files:
+            # FIXED: Used 'file_path' in list comprehension
+            self.session_context.append(
+                "Created new modules: "
+                + ", ".join(
+                    [os.path.basename(file_path) for file_path in created_files]
+                )
+            )
+
         if os.path.exists(self.feature_file):
             os.remove(self.feature_file)
         return True
@@ -1064,6 +1099,10 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                     if not success:
                         self.restore_workspace(backup_state)
                         logger.warning("🔄 Rollback performed due to unfixable errors.")
+                        self.session_context.append(
+                            "CRITICAL: The last refactor/feature attempt FAILED and was ROLLED BACK. "
+                            "The files on disk have NOT changed. Check FAILED_FEATURE.md for error logs."
+                        )
 
                         failure_report = f"\n\n### ❌ FAILURE ATTEMPT LOGS ({time.strftime('%Y-%m-%d %H:%M:%S')})\n"
                         failure_report += "\n".join(self.session_context[-3:])

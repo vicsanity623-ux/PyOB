@@ -18,4 +18,4 @@ SYMBOLS.json
 ANALYSIS.md
 build_env
 *.dmg
-NoClaw.spec
+*.spec

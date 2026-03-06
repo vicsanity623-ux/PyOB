@@ -224,9 +224,7 @@ class EntranceController:
         if any(f in target_rel_path for f in engine_files):
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             project_name = os.path.basename(self.target_dir)
-            base_backup_path = (
-                Path.home() / "Documents" / "PYOB_Backups" / project_name
-            )
+            base_backup_path = Path.home() / "Documents" / "PYOB_Backups" / project_name
             pod_path = base_backup_path / f"safety_pod_v{iteration}_{timestamp}"
 
             try:
@@ -501,12 +499,27 @@ Reply ONLY with the relative file path.
 
     def update_ledger_for_file(self, rel_path: str, code: str):
         ext = os.path.splitext(rel_path)[1]
+        # Clear existing definitions for this file before re-populating
+        definitions_to_remove = [
+            name
+            for name, path in self.ledger["definitions"].items()
+            if path == rel_path
+        ]
+        for name in definitions_to_remove:
+            del self.ledger["definitions"][name]
+
         if ext == ".py":
             try:
                 tree = ast.parse(code)
                 for n in ast.walk(tree):
                     if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
                         self.ledger["definitions"][n.name] = rel_path
+                    elif isinstance(n, ast.Assign):
+                        # Add top-level global variables and constants as definitions.
+                        # This aligns with the stated bug fix and the logic in _parse_python.
+                        for target in n.targets:
+                            if isinstance(target, ast.Name) and target.id.isupper():
+                                self.ledger["definitions"][target.id] = rel_path
             except Exception as e:
                 logger.warning(f"Failed to parse Python AST for {rel_path}: {e}")
         elif ext in [".js", ".ts"]:
@@ -514,8 +527,13 @@ Reply ONLY with the relative file path.
                 r"(?:function|class|const|var|let)\s+([a-zA-Z0-9_$]+)", code
             )
             for d in defs:
-                if len(d) > 3:
+                if len(d) > 3:  # Minimum length for a symbol
                     self.ledger["definitions"][d] = rel_path
+
+        # Clear existing references for this file before re-populating
+        if rel_path in self.ledger["references"]:
+            del self.ledger["references"][rel_path]
+
         potential_refs = re.findall(r"([a-zA-Z0-9_$]{4,})(?=\s*\(|\s*\.)", code)
         self.ledger["references"][rel_path] = list(set(potential_refs))
         self.save_ledger()

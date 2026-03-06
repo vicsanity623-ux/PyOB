@@ -9,7 +9,7 @@ def main():
     project_root = Path(__file__).parent.absolute()
 
     # --- Configuration ---
-    VERSION = "0.2.0"
+    VERSION = "0.2.1-beta1"
     APP_NAME = "PyOuroBoros"
 
     print(f"🚀 Forging {APP_NAME} v{VERSION} for {os_name}...")
@@ -54,7 +54,7 @@ def main():
             + [
                 "--onefile",
                 "--console",
-                "--icon=no-claw.ico",
+                "--icon=pyob.ico", # convert pyob.png or pyob.icns to .ico
             ]
         )
         dist_output = project_root / "dist" / f"{APP_NAME}.exe"
