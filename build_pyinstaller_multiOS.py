@@ -7,15 +7,9 @@ from pathlib import Path
 def main():
     os_name = platform.system().lower()
     project_root = Path(__file__).parent.absolute()
-
-    # --- Configuration ---
-    VERSION = "0.2.1"
+    VERSION = "0.2.2-beta1"
     APP_NAME = "Py-OB"
-
     print(f"🚀 Forging {APP_NAME} v{VERSION} for {os_name}...")
-
-    # Base configuration for all platforms
-    # We include all new mixins and external dependencies
     common = [
         f"--name={APP_NAME}",
         "--clean",
@@ -41,8 +35,6 @@ def main():
     ]
 
     if os_name == "darwin":
-        # macOS: Create a .app bundle for Spotlight/Icon support
-        # We use --windowed so it doesn't leave a stray terminal window open
         cmd = (
             ["pyinstaller"]
             + common
@@ -54,24 +46,21 @@ def main():
         dist_output = project_root / "dist" / f"{APP_NAME}.app"
 
     elif os_name == "windows":
-        # Windows: Create a single .exe with console for logging visibility
         cmd = (
             ["pyinstaller"]
             + common
             + [
                 "--onefile",
                 "--console",
-                "--icon=pyob.ico",  # convert pyob.png or pyob.icns to .ico
+                "--icon=pyob.ico",
             ]
         )
         dist_output = project_root / "dist" / f"{APP_NAME}.exe"
 
     else:
-        # Linux: Create a single binary
         cmd = ["pyinstaller"] + common + ["--onefile", "--console"]
         dist_output = project_root / "dist" / APP_NAME
 
-    # --- Step 1: Run PyInstaller ---
     print(f"🛠️  Running PyInstaller for {APP_NAME}...")
     try:
         subprocess.run(cmd, check=True)
@@ -80,18 +69,15 @@ def main():
         print(f"\n❌ PyInstaller Build failed: {e}")
         sys.exit(1)
 
-    # --- Step 2: macOS Specific DMG Packaging ---
     if os_name == "darwin":
         print("\n📦 Starting DMG creation...")
 
         dmg_name = f"{APP_NAME}-v{VERSION}.dmg"
         dmg_path = project_root / dmg_name
 
-        # Remove old DMG if it exists
         if dmg_path.exists():
             dmg_path.unlink()
 
-        # create-dmg command configuration
         dmg_cmd = [
             "create-dmg",
             "--volname",

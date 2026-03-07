@@ -48,8 +48,8 @@ IGNORE_DIRS = {
     ".git",
     "autovenv",
     "build_env",
-    "build",  # PyInstaller build artifacts
-    "dist",  # PyInstaller output folder
+    "build",
+    "dist",
     "docs",
     "venv",
     ".venv",
@@ -92,7 +92,6 @@ IGNORE_FILES = {
 SUPPORTED_EXTENSIONS = {".py", ".js", ".ts", ".html", ".css", ".json", ".sh"}
 
 
-# --- Dynamic Cyberpunk Logging Configuration ---
 class CyberpunkFormatter(logging.Formatter):
     """Formatter that wraps text based on terminal width and adds neon colors."""
 
@@ -137,7 +136,6 @@ logger.propagate = False
 
 
 class CoreUtilsMixin:
-    # --- Mypy Type Hints (Attributes provided by the parent AutoReviewer) ---
     target_dir: str
     memory_file: str
     key_cooldowns: dict[str, float]
@@ -258,11 +256,9 @@ class CoreUtilsMixin:
     def backup_workspace(self) -> dict[str, str]:
         state: dict[str, str] = {}
         for root, dirs, files in os.walk(self.target_dir):
-            # Prune directories using the global set
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
             for file in files:
-                # Skip ignored files
                 if file in IGNORE_FILES:
                     continue
 
@@ -636,45 +632,65 @@ class CoreUtilsMixin:
         return new_code, explanation, all_edits_succeeded
 
     def _find_entry_file(self) -> str | None:
-        # PRIORITY SEARCH
         priority_files = [
             "entrance.py",
             "main.py",
             "app.py",
             "gui.py",
             "pyob_launcher.py",
+            "package.json",
+            "server.js",
+            "app.js",
+            "index.html",
+            "index.htm",
         ]
+
         for f_name in priority_files:
             target = os.path.join(self.target_dir, f_name)
             if os.path.exists(target):
+                if (
+                    f_name == "package.json"
+                    or f_name.endswith(".html")
+                    or f_name.endswith(".htm")
+                ):
+                    return target
+
                 try:
                     with open(target, "r", encoding="utf-8", errors="ignore") as f:
-                        if 'if __name__ == "__main__":' in f.read():
+                        content = f.read()
+                        if (
+                            target.endswith(".py")
+                            and 'if __name__ == "__main__":' in content
+                        ):
+                            return target
+                        if target.endswith(".js") and len(content.strip()) > 10:
                             return target
                 except Exception:
                     continue
 
-        # DEEP SEARCH
+        html_fallback = None
         for root, dirs, files in os.walk(self.target_dir):
-            # --- FIXED: Use the GLOBAL IGNORE_DIRS here ---
             dirs[:] = [
                 d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")
             ]
 
             for file in files:
-                # --- FIXED: Use the GLOBAL IGNORE_FILES here ---
-                if file in IGNORE_FILES or not file.endswith(".py"):
-                    continue
-
-                # Double-check that we aren't inside an ignore dir (backup safety)
-                if any(x in root for x in IGNORE_DIRS):
+                if file in IGNORE_FILES:
                     continue
 
                 file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f_obj:
-                        if 'if __name__ == "__main__":' in f_obj.read():
-                            return file_path
-                except Exception:
-                    continue
-        return None
+
+                if file.endswith(".py"):
+                    try:
+                        with open(
+                            file_path, "r", encoding="utf-8", errors="ignore"
+                        ) as f_obj:
+                            if 'if __name__ == "__main__":' in f_obj.read():
+                                return file_path
+                    except Exception:
+                        continue
+
+                if file.endswith(".html") and not html_fallback:
+                    html_fallback = file_path
+
+        return html_fallback

@@ -29,7 +29,6 @@ from prompts_and_memory import PromptsAndMemoryMixin
 
 
 class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
-    # FIXED: Added explicit type annotation for the shared class variable
     _shared_cooldowns: dict[str, float] | None = None
 
     def __init__(self, target_dir: str):
@@ -49,7 +48,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         self._ensure_prompt_files()
 
         if AutoReviewer._shared_cooldowns is None:
-            # FIXED: Used 0.0 (float) instead of 0 (int) to match type dict[str, float]
             AutoReviewer._shared_cooldowns = {
                 key: 0.0 for key in GEMINI_API_KEYS if key.strip()
             }
@@ -531,7 +529,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         if not entry_file:
             return True
 
-        # --- SMARTER PYTHON DETECTION ---
         venv_python = os.path.join(self.target_dir, "build_env", "bin", "python3")
         if not os.path.exists(venv_python):
             venv_python = os.path.join(self.target_dir, "venv", "bin", "python3")
@@ -542,8 +539,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             python_cmd = shutil.which("python3") or shutil.which("python") or "python3"
         else:
             python_cmd = sys.executable
-        # --------------------------------
-
         for attempt in range(3):
             logger.info(
                 f"\n🚀 PHASE 4: Runtime Verification. Launching {os.path.basename(entry_file)} for 10 seconds (Attempt {attempt + 1}/3)..."
@@ -600,8 +595,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
             logger.info(
                 f"📦 Auto-detected missing dependency: {pkg}. Attempting pip install..."
             )
-
-            # --- SMARTER PYTHON DETECTION ---
             venv_python = os.path.join(self.target_dir, "build_env", "bin", "python3")
             if not os.path.exists(venv_python):
                 venv_python = os.path.join(self.target_dir, "venv", "bin", "python3")
@@ -614,8 +607,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                 )
             else:
                 python_cmd = sys.executable
-            # --------------------------------
-
             try:
                 subprocess.run(
                     [
@@ -758,18 +749,12 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
     def scan_directory(self) -> list[str]:
         file_list = []
         for root, dirs, files in os.walk(self.target_dir):
-            # Prune ignored directories
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
-
             for file in files:
                 if file in IGNORE_FILES:
                     continue
-
-                # 2. Ignore PyInstaller and DMG artifacts by extension
                 if file.endswith(".spec") or file.endswith(".dmg"):
                     continue
-
-                # 3. Only include files with supported extensions
                 if any(file.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                     file_list.append(os.path.join(root, file))
         return file_list
@@ -859,20 +844,14 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
 
         with open(target_path, "r", encoding="utf-8") as f_handle:
             source_code = f_handle.read()
-
-        # --- TRANSACTIONAL STORAGE ---
         created_files: list[str] = []
-
-        # Look for <CREATE_FILE> tags in the AI proposal
         new_file_matches = re.finditer(
             r'<CREATE_FILE path="(.*?)">(.*?)</CREATE_FILE>', feature_content, re.DOTALL
         )
-
         for file_match in new_file_matches:
             new_path_rel = file_match.group(1)
             new_code_payload = file_match.group(2).strip()
             new_path_abs = os.path.join(self.target_dir, new_path_rel)
-
             if not os.path.exists(new_path_abs):
                 try:
                     logger.warning(
@@ -883,7 +862,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
                     created_files.append(new_path_abs)
                 except Exception as e:
                     logger.error(f"Failed to create new module {new_path_rel}: {e}")
-
         exp_match = re.search(
             r"\*\*Explanation:\*\*(.*?)(?:###|---|>)",
             feature_content,
@@ -915,7 +893,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
 
         if new_code == source_code:
             logger.error("Implementation failed. Rolling back created modules.")
-            # FIXED: Used 'file_path' instead of 'f' to avoid Mypy TextIOWrapper collision
             for file_path in created_files:
                 if os.path.exists(file_path):
                     os.remove(file_path)
@@ -923,23 +900,18 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
 
         if lang_tag == "python":
             new_code = self.ensure_imports_retained(source_code, new_code, target_path)
-
         with open(target_path, "w", encoding="utf-8") as f_out:
             f_out.write(new_code)
-
         if lang_tag == "python":
-            # If verification fails, clean up the newly spawned files
             if not self.run_linter_fix_loop(
                 context_of_change=feature_content
             ) or not self.run_and_verify_app(context_of_change=feature_content):
-                # FIXED: Used 'file_path' instead of 'f'
                 for file_path in created_files:
                     if os.path.exists(file_path):
                         os.remove(file_path)
                 return False
 
             if not self.check_downstream_breakages(target_path, rel_path):
-                # FIXED: Used 'file_path' instead of 'f'
                 for file_path in created_files:
                     if os.path.exists(file_path):
                         os.remove(file_path)
@@ -952,7 +924,6 @@ class AutoReviewer(CoreUtilsMixin, PromptsAndMemoryMixin):
         )
 
         if created_files:
-            # FIXED: Used 'file_path' in list comprehension
             self.session_context.append(
                 "Created new modules: "
                 + ", ".join(

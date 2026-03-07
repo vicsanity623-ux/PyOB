@@ -22,7 +22,7 @@
 
 ## 🧠 What is PyOB?
 
-PYOB is an **autonomous code review and feature engineering system** that continuously analyzes, patches, and evolves your codebase through a multi-stage verification pipeline. Unlike "black-box" coding assistants that rewrite entire files, PyOB operates with **surgical XML-based edits**, a **persistent symbolic dependency ledger**, and **human-in-the-loop checkpoints** — ensuring your project is never left in a broken state.
+PYOB is NOT a personal AI CHAT assistant. PyOB is an **autonomous code review and feature engineering system** that continuously analyzes, patches, and evolves your codebase through a multi-stage verification pipeline. Unlike "black-box" coding assistants that rewrite entire files, PyOB operates with **surgical XML-based edits**, a **persistent symbolic dependency ledger**, and **human-in-the-loop checkpoints** — ensuring your project is never left in a broken state. It never waits for you to send a message before it acts, it **already knows its purpose and goals**.
 
 ### Key Differentiators
 
@@ -68,6 +68,10 @@ Interactive terminal checkpoints at every stage:
 - **Primary**: Gemini 2.5 Flash with multi-key rotation and 429-aware cooldowns
 - **Fallback**: Local Ollama (`qwen3-coder:30b`) activates automatically when all API keys are rate-limited
 - **Progress Spinner**: Real-time token estimation with animated progress bar during inference
+
+
+### 🧑‍🔧 Got Bugs/Errors or is your code crashing?
+- **Scan & Fix**: Run PyOB on your project and let it perform a test run, it will then see the crash/errors and find bugs. PyOB will then perform a code review and propose a fix automatically fixing your crashes and repairing any bugs. 
 
 ---
 

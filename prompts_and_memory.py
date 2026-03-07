@@ -5,7 +5,6 @@ from core_utils import logger
 
 
 class PromptsAndMemoryMixin:
-    # --- Mypy Type Hints (Attributes expected to be provided by AutoReviewer) ---
     target_dir: str
     history_path: str
     analysis_path: str
@@ -24,9 +23,7 @@ class PromptsAndMemoryMixin:
             "PCF.md": 'You are the PYOB Symbolic Fixer taking over Phase 3 Cascaded Edits.\n{memory_section}We just modified `{trigger_file}`, and it broke a dependency downstream: `{rel_broken_path}`.\n\n### Linter Errors for `{rel_broken_path}`:\n{mypy_errors}\n\n### Source Code of `{rel_broken_path}`:\n```python\n{broken_code}\n```\n\n### Instructions:\n1. Respond EXCLUSIVELY with a <THOUGHT> block followed by ONE <EDIT> block to fix the broken references.\n2. **DEFEATING MYPY (CRITICAL)**: If the error contains `[union-attr]` or states `Item "None" of ... has no attribute`, adding a type hint will fail. You MUST fix this by either inserting `assert variable is not None` before the operation, or adding `# type: ignore` to the end of the failing line.\n\n### REQUIRED XML FORMAT:\n<THOUGHT>\nExplanation of cascade fix...\n</THOUGHT>\n<EDIT>\n<SEARCH>\nExact lines to replace\n</SEARCH>\n<REPLACE>\nNew replacement lines\n</REPLACE>\n</EDIT>',
             "PIR.md": "You are an elite PYOB developer performing a post-implementation repair.\nAn automated attempt to implement a feature or bugfix has failed, resulting in the following errors.\n\n### Original Goal / Change Request:\n{context_of_change}\n\n### The Resulting Errors (Linter/Runtime):\n{err_text}\n\n### The Broken Code in `{rel_path}`:\n```\n{code}\n```\n\n### Instructions:\n1. Analyze the 'Original Goal' and the 'Resulting Errors' together.\n2. CRITICAL INDENTATION CHECK: If the error says `Unexpected indentation`, rewrite the <EDIT> block with PERFECT absolute indentation.\n3. CRITICAL IMPORT CHECK: If the error is `F821 Undefined name`, you MUST create an <EDIT> block at the top of the file to add the missing `import` statement.\n4. DEFEATING MYPY: If the error is a `[union-attr]` or `None` type error, simply adding a type hint will fail the linter again. You MUST insert `assert object is not None` right before it is used, or append `# type: ignore` to the failing line.\n5. Create a surgical XML edit to fix the code.\n\n### REQUIRED XML FORMAT:\n<THOUGHT>\nRoot Cause: ...\nImports Needed: ...\nIndentation Fix Needed: [Yes/No]\nAction: ...\n</THOUGHT>\n<EDIT>\n<SEARCH>\nExact lines to replace\n</SEARCH>\n<REPLACE>\nNew replacement lines\n</REPLACE>\n</EDIT>",
         }
-        os.makedirs(
-            self.target_dir, exist_ok=True
-        )  # Ensure the target directory exists
+        os.makedirs(self.target_dir, exist_ok=True)
         for filename, content in templates.items():
             filepath = os.path.join(self.target_dir, filename)
             with open(filepath, "w", encoding="utf-8") as f:
@@ -60,34 +57,25 @@ class PromptsAndMemoryMixin:
 
     def _get_rich_context(self) -> str:
         context = ""
-        # 1. Project Goal (Kept ultra-short)
         analysis_path = os.path.join(self.target_dir, "ANALYSIS.md")
         if os.path.exists(analysis_path):
             with open(analysis_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                # Split and take header safely
                 header_parts = content.split("## 📂 File Directory")
                 header = header_parts[0].strip() if header_parts else ""
                 context += f"### Project Goal:\n{header}\n\n"
 
-        # 2. Compact History (Reduced from 5 to the last 3 edits)
         if os.path.exists(self.history_path):
             with open(self.history_path, "r", encoding="utf-8") as f:
                 hist = f.read()
                 headers = [line for line in hist.split("\n") if line.startswith("## ")]
-                # Only grab the last 3 files edited to save tokens
                 context += (
                     "### Recent Edit History:\n" + "\n".join(headers[-3:]) + "\n\n"
                 )
 
-        # 3. MEMORY TRUNCATION (The Hard Cap)
         if self.memory:
             mem_str = self.memory.strip()
-            # If memory is larger than ~1500 characters (approx 350 tokens)
             if len(mem_str) > 1500:
-                # Keep the first 500 chars (Overall architecture)
-                # AND the last 800 chars (Most recent dependencies)
-                # Discard the bloated middle.
                 mem_str = (
                     mem_str[:500]
                     + "\n\n... [OLDER MEMORY TRUNCATED FOR CONTEXT LIMITS] ...\n\n"
@@ -99,8 +87,6 @@ class PromptsAndMemoryMixin:
         return context
 
     def update_memory(self) -> None:
-        # Note: session_context is expected on the child class (AutoReviewer)
-        # We access it dynamically to avoid Mixin attribute errors
         session_context: list[str] = getattr(self, "session_context", [])
         if not session_context:
             return
@@ -115,7 +101,6 @@ class PromptsAndMemoryMixin:
         def validator(text: str) -> bool:
             return bool(text.strip())
 
-        # get_valid_llm_response is provided by CoreUtilsMixin/AutoReviewer
         llm_response = getattr(self, "get_valid_llm_response")(
             prompt, validator, context="Memory Update"
         )

@@ -32,13 +32,9 @@ def load_config():
 
     print("🛠️  PYOB First-Time Setup")
     print("═" * 40)
-
-    # 1. API Keys
     print("\n🔑 Step 1: Gemini API Keys")
     print("Enter up to 10 keys separated by commas:")
     keys = input("Keys: ").strip()
-
-    # 2. Models with Warning
     print("\n🤖 Step 2: Model Configuration")
     print("⚠️  WARNING: PYOB is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'.")
     print("   Changing these may result in parsing errors or logic loops.")
@@ -75,19 +71,14 @@ if __name__ == "__main__":
     print("═" * 70)
     print("                  PYOB Launcher")
     print("═" * 70)
-
-    # 1. Load Configuration
     config = load_config()
-
-    # 2. Inject into Environment
     os.environ["PYOB_GEMINI_KEYS"] = config.get("gemini_keys", "")
     os.environ["PYOB_GEMINI_MODEL"] = config.get("gemini_model", "gemini-2.5-flash")
     os.environ["PYOB_LOCAL_MODEL"] = config.get("local_model", "qwen3-coder:30b")
 
-    # 3. Import App Logic (After Env is set)
+    #  Import App Logic (After Env is set)
     from entrance import EntranceController
 
-    # 4. Get Project Path
     if len(sys.argv) > 1:
         target_dir = sys.argv[1]
     else:

@@ -32,16 +32,12 @@ class TargetedReviewer(AutoReviewer):
 class EntranceController:
     def __init__(self, target_dir: str):
         self.target_dir = os.path.abspath(target_dir)
-        # Check if we should skip dashboard (for recursive test runs)
         self.skip_dashboard = "--no-dashboard" in sys.argv
-
         self.analysis_path = os.path.join(self.target_dir, "ANALYSIS.md")
         self.history_path = os.path.join(self.target_dir, "HISTORY.md")
         self.symbols_path = os.path.join(self.target_dir, "SYMBOLS.json")
         self.llm_engine = AutoReviewer(self.target_dir)
         self.ledger = self.load_ledger()
-
-        # FIXED: Added Type Annotations for Mypy
         self.cascade_queue: list[str] = []
         self.cascade_diffs: dict[str, str] = {}
 
@@ -51,15 +47,12 @@ class EntranceController:
             self.start_dashboard()
 
     def start_dashboard(self):
-        # 1. Build the physical file for the user to see
         obs_path = os.path.join(self.target_dir, "observer.html")
         with open(obs_path, "w", encoding="utf-8") as f:
             f.write(OBSERVER_HTML)
 
-        # 2. Set the controller reference for the handler
         ObserverHandler.controller = self
 
-        # 3. Start the background server
         def run_server():
             try:
                 server = HTTPServer(("localhost", 5000), ObserverHandler)
@@ -69,7 +62,6 @@ class EntranceController:
 
         threading.Thread(target=run_server, daemon=True).start()
 
-        # 4. Notify the user with a Cyberpunk banner
         print("\n" + "=" * 60)
         print("⚡ PyOuroBoros (PyOB) OBSERVER IS LIVE")
         print("🔗 URL: http://localhost:5000")
@@ -79,7 +71,6 @@ class EntranceController:
     def reboot_pyob(self):
         """Standard Hot-Reboot: Replaces the current process with a fresh one."""
         logger.warning("🔄 SELF-EVOLUTION COMPLETE: Rebooting fresh PYOB engine...")
-        # Ensure we pass the same arguments (like the target directory)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def trigger_production_build(self):
@@ -91,10 +82,8 @@ class EntranceController:
 
         logger.info("🛠️ STARTING PRODUCTION BUILD... This will take 2-3 minutes.")
         try:
-            # 1. Run the PyInstaller build
             subprocess.run([sys.executable, build_script], check=True)
 
-            # 2. Define Mac paths
             app_name = "PyOuroBoros.app"
             dist_path = os.path.join(self.target_dir, "dist", app_name)
             applications_path = f"/Applications/{app_name}"
@@ -104,13 +93,10 @@ class EntranceController:
                     f"🚀 FORGE COMPLETE: Deploying new version to {applications_path}..."
                 )
 
-                # Delete old version and copy new one
                 if os.path.exists(applications_path):
                     shutil.rmtree(applications_path)
                 shutil.copytree(dist_path, applications_path)
 
-                # --- THE PASSING OF THE TORCH ---
-                # Launch new app and pass the CURRENT target directory as an argument.
                 subprocess.Popen(
                     ["open", "-a", applications_path, "--args", self.target_dir]
                 )
@@ -153,13 +139,11 @@ class EntranceController:
                 f"\n\n{'=' * 70}\n🎯 TARGETED PIPELINE LOOP (Iteration {iteration})\n{'=' * 70}"
             )
 
-            # Track if PYOB's own logic was upgraded this turn
             self_evolved = False
 
             try:
                 self.execute_targeted_iteration(iteration)
 
-                # --- SELF-EVOLUTION DETECTION ---
                 history_text = self._read_file(self.history_path)
                 engine_files = [
                     "autoreviewer.py",
@@ -168,12 +152,10 @@ class EntranceController:
                     "entrance.py",
                 ]
 
-                # Check the very last entry in HISTORY.md
                 if history_text:
                     last_entry = history_text.split("##")[-1]
                     if any(f"`{ef}`" in last_entry for ef in engine_files):
                         self_evolved = True
-                # --------------------------------
 
             except KeyboardInterrupt:
                 logger.info("\nExiting Entrance Controller...")
@@ -181,7 +163,6 @@ class EntranceController:
             except Exception as e:
                 logger.error(f"Unexpected error in master loop: {e}", exc_info=True)
 
-            # --- AUTOMATED ENGINE RELOAD ---
             if self_evolved:
                 if getattr(sys, "frozen", False):
                     logger.warning(
@@ -191,7 +172,6 @@ class EntranceController:
                 else:
                     logger.warning("🐍 SCRIPT ENGINE EVOLVED: Initiating Hot-Reboot.")
                     self.reboot_pyob()
-            # -------------------------------
 
             iteration += 1
             logger.info("Iteration complete. Waiting for system cooldown...")
@@ -214,7 +194,6 @@ class EntranceController:
         if not target_rel_path:
             return
 
-        # --- RECURSIVE SAFETY PATCH (EXTERNAL STORAGE) ---
         engine_files = [
             "autoreviewer.py",
             "core_utils.py",
@@ -254,7 +233,6 @@ class EntranceController:
         reviewer.session_context = self.llm_engine.session_context[:]
         reviewer.run_pipeline(iteration)
 
-        # Sync intent context back to main engine
         self.llm_engine.session_context = reviewer.session_context[:]
 
         new_content = ""
@@ -262,7 +240,6 @@ class EntranceController:
             with open(target_abs_path, "r", encoding="utf-8", errors="ignore") as f:
                 new_content = f.read()
 
-        # Brain-to-Queue Intent Detection
         all_text_context = " ".join(self.llm_engine.session_context).lower()
         for other_file in self.llm_engine.scan_directory():
             rel_other = os.path.relpath(other_file, self.target_dir)
@@ -283,7 +260,6 @@ class EntranceController:
             )
             self.append_to_history(target_rel_path, old_content, new_content)
 
-            # FIXED: Used keepends=True for Mypy compatibility
             current_diff = "".join(
                 difflib.unified_diff(
                     old_content.splitlines(keepends=True),
@@ -314,43 +290,66 @@ class EntranceController:
 
     def _run_final_verification_and_heal(self, backup_state: dict) -> bool:
         """
-        Runs the main application file for 10 seconds. If it crashes, it
-        attempts to fix the error up to 3 times.
+        Runs the project entry file for 10 seconds. Supports Python,
+        Node.js (package.json), and static HTML projects.
         """
         entry_file = self.llm_engine._find_entry_file()
         if not entry_file:
             logger.warning("No main entry file found. Skipping runtime test.")
             return True
+
         rel_entry_file = os.path.relpath(entry_file, self.target_dir)
 
-        # 3. Execution and Healing Loop
         for attempt in range(3):
             logger.info(
                 f"🚀 Launching `{rel_entry_file}` for test... (Attempt {attempt + 1}/3)"
             )
 
-            # --- SMARTER PYTHON DETECTION ---
-            # 1. Prioritize project-specific virtual environments
-            venv_python = os.path.join(self.target_dir, "build_env", "bin", "python3")
-            if not os.path.exists(venv_python):
-                venv_python = os.path.join(self.target_dir, "venv", "bin", "python3")
+            cmd: list[str] = []
 
-            if os.path.exists(venv_python):
-                python_cmd = venv_python
-            elif getattr(sys, "frozen", False):
-                # 2. Fallback to system Python if running as DMG and no venv found
-                python_cmd = (
-                    shutil.which("python3") or shutil.which("python") or "python3"
+            if entry_file.endswith(".py"):
+                venv_python = os.path.join(
+                    self.target_dir, "build_env", "bin", "python3"
                 )
-            else:
-                # 3. Use current interpreter if running as script
-                python_cmd = sys.executable
-            # --------------------------------
+                if not os.path.exists(venv_python):
+                    venv_python = os.path.join(
+                        self.target_dir, "venv", "bin", "python3"
+                    )
 
-            # RECURSIVE PORT SAFETY
-            cmd = [python_cmd, entry_file]
-            if os.path.basename(entry_file) == "entrance.py":
-                cmd.append("--no-dashboard")
+                if os.path.exists(venv_python):
+                    python_cmd = venv_python
+                elif getattr(sys, "frozen", False):
+                    python_cmd = (
+                        shutil.which("python3") or shutil.which("python") or "python3"
+                    )
+                else:
+                    python_cmd = sys.executable
+
+                cmd = [python_cmd, entry_file]
+                if os.path.basename(entry_file) == "entrance.py":
+                    cmd.append("--no-dashboard")
+
+            elif entry_file.endswith("package.json"):
+                npm_bin = shutil.which("npm") or "npm"
+                cmd = [npm_bin, "start"]
+
+            elif entry_file.endswith(".js"):
+                node_bin = shutil.which("node") or "node"
+                cmd = [node_bin, entry_file]
+
+            elif entry_file.endswith(".html") or entry_file.endswith(".htm"):
+                if sys.platform == "darwin":
+                    cmd = ["open", entry_file]
+                elif sys.platform == "win32":
+                    cmd = ["start", entry_file]
+                else:
+                    cmd = ["xdg-open", entry_file]
+
+            if not cmd:
+                logger.warning(
+                    f"Could not determine launch command for {rel_entry_file}"
+                )
+                return True
 
             start_time = time.time()
             process = subprocess.Popen(
@@ -361,6 +360,13 @@ class EntranceController:
                 cwd=self.target_dir,
             )
 
+            if entry_file.endswith(".html") or entry_file.endswith(".htm"):
+                time.sleep(5)
+                logger.info(
+                    "✅ Static HTML entry opened in browser. Verification complete."
+                )
+                return True
+
             stdout, stderr = "", ""
             try:
                 stdout, stderr = process.communicate(timeout=10)
@@ -369,6 +375,7 @@ class EntranceController:
                 stdout, stderr = process.communicate()
 
             duration = time.time() - start_time
+
             has_error_logs = any(
                 kw in stderr or kw in stdout
                 for kw in [
@@ -377,6 +384,7 @@ class EntranceController:
                     "Error:",
                     "ModuleNotFoundError",
                     "ImportError",
+                    "ReferenceError",
                 ]
             )
 
@@ -510,7 +518,6 @@ Reply ONLY with the relative file path.
 
     def update_ledger_for_file(self, rel_path: str, code: str):
         ext = os.path.splitext(rel_path)[1]
-        # Clear existing definitions for this file before re-populating
         definitions_to_remove = [
             name
             for name, path in self.ledger["definitions"].items()
@@ -526,8 +533,6 @@ Reply ONLY with the relative file path.
                     if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
                         self.ledger["definitions"][n.name] = rel_path
                     elif isinstance(n, ast.Assign):
-                        # Add top-level global variables and constants as definitions.
-                        # This aligns with the stated bug fix and the logic in _parse_python.
                         for target in n.targets:
                             if isinstance(target, ast.Name) and target.id.isupper():
                                 self.ledger["definitions"][target.id] = rel_path
@@ -538,10 +543,9 @@ Reply ONLY with the relative file path.
                 r"(?:function|class|const|var|let)\s+([a-zA-Z0-9_$]+)", code
             )
             for d in defs:
-                if len(d) > 3:  # Minimum length for a symbol
+                if len(d) > 3:
                     self.ledger["definitions"][d] = rel_path
 
-        # Clear existing references for this file before re-populating
         if rel_path in self.ledger["references"]:
             del self.ledger["references"][rel_path]
 
@@ -664,7 +668,6 @@ Reply ONLY with the relative file path.
         return res
 
     def append_to_history(self, rel_path: str, old_code: str, new_code: str):
-        # FIXED: Change splitlines(1) to keepends=True for Mypy
         diff_lines = list(
             difflib.unified_diff(
                 old_code.splitlines(keepends=True),
