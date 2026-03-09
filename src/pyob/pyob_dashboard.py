@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 
 OBSERVER_HTML = """
