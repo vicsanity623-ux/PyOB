@@ -1,7 +1,7 @@
 import json
 import os
 from http.server import BaseHTTPRequestHandler
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyob.entrance import EntranceController
