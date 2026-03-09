@@ -380,24 +380,30 @@ class CoreUtilsMixin:
             if key is not None:
                 response_text = self.stream_gemini(prompt, key, on_chunk)
             else:
+
+                if os.environ.get("GITHUB_ACTIONS") == "true":
+                    first_chunk_received[0] = True
+                    return "ERROR_CODE_CLOUD_OLLAMA_BLOCKED"
+
                 response_text = self.stream_ollama(prompt, on_chunk)
         except Exception as e:
             first_chunk_received[0] = True
             return f"ERROR_CODE_EXCEPTION: {e}"
+
         if not first_chunk_received[0]:
             first_chunk_received[0] = True
+
         final_time = time.time() - gen_start_time
-        print(
-            f"\n\n[✅ Generation Complete: ~{len(response_text) // 4} tokens in {final_time:.1f}s]"
-        )
+        if response_text and not response_text.startswith("ERROR_CODE_"):
+            print(f"\n\n[✅ Generation Complete: ~{len(response_text) // 4} tokens in {final_time:.1f}s]")
         return response_text
 
     def get_valid_llm_response(self, prompt: str, validator, context: str = "") -> str:
         attempts = 0
         use_ollama = False
-        logger.info(
-            f"📊 Engine check: Found {len(self.key_cooldowns)} Gemini API keys in current environment."
-        )
+        is_cloud = os.environ.get("GITHUB_ACTIONS") == "true"
+
+        logger.info(f"📊 Engine check: Found {len(self.key_cooldowns)} Gemini API keys.")
 
         while True:
             key = None
@@ -406,44 +412,51 @@ class CoreUtilsMixin:
                 k for k, cooldown in self.key_cooldowns.items() if now > cooldown
             ]
             if not available_keys:
-                if os.environ.get("GITHUB_ACTIONS") == "true":
-                    wait_times = [
-                        cooldown - now for cooldown in self.key_cooldowns.values()
-                    ]
-                    sleep_duration = min(wait_times) if wait_times else 120
-                    sleep_duration = max(10, min(sleep_duration + 5, 1200))
-                    logger.warning(
-                        f"⏳ CLOUD NOTICE: All 8 keys rate-limited. Resuming in {int(sleep_duration)}s..."
-                    )
+                if is_cloud:
+                    wait_times = [cooldown - now for cooldown in self.key_cooldowns.values()]
+                    sleep_duration = max(10, min(min(wait_times) if wait_times else 120, 1200))
+                    logger.warning(f"⏳ CLOUD NOTICE: All keys rate-limited. Retrying Gemini in {int(sleep_duration)}s...")
                     time.sleep(sleep_duration)
                     continue
+
                 if not use_ollama:
-                    logger.warning(
-                        "🚫 All Gemini keys are currently rate-limited. Falling back to Local Ollama."
-                    )
+                    logger.warning("🚫 All Gemini keys rate-limited. Falling back to Local Ollama.")
                     use_ollama = True
             else:
                 use_ollama = False
                 key = available_keys[attempts % len(available_keys)]
-                logger.info(
-                    f"Attempting Gemini API Key {attempts % len(available_keys) + 1}/{len(available_keys)}"
-                )
+                logger.info(f"Attempting Gemini API Key {attempts % len(available_keys) + 1}/{len(available_keys)}")
+
             if use_ollama:
                 logger.info("Using Local Ollama Engine...")
+
             response_text = self._stream_single_llm(prompt, key=key, context=context)
-            if response_text.startswith("ERROR_CODE_429"):
-                if key:
+
+            if is_cloud and (response_text.startswith("ERROR_CODE_") or not response_text.strip()):
+                if "429" in response_text and key:
                     self.key_cooldowns[key] = time.time() + 1200
+                    logger.warning(f"⚠️ Key rate-limited. Rotating...")
+                else:
+                    logger.warning(f"⚠️ Gemini error/empty response. Sleeping 10s before retry...")
+                    time.sleep(10)
                 attempts += 1
                 continue
+
+            if response_text.startswith("ERROR_CODE_429"):
+                if key: self.key_cooldowns[key] = time.time() + 1200
+                attempts += 1
+                continue
+
             if response_text.startswith("ERROR_CODE_") or not response_text.strip():
                 attempts += 1
                 continue
+
             if validator(response_text):
                 return response_text
             else:
                 logger.warning("LLM response failed validation. Retrying...")
                 attempts += 1
+                if is_cloud: time.sleep(5)
 
     def _get_user_prompt_augmentation(self, initial_text: str = "") -> str:
         import tempfile
