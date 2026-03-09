@@ -347,8 +347,8 @@ class EntranceController:
                 )
                 for f_name in self.ENGINE_FILES:
                     src = os.path.join(self.target_dir, "src", "pyob", f_name)
-                    if not os.path.exists(src):
-                        src = os.path.join(self.target_dir, f_name)
+                    # Assuming src/pyob is the canonical location for engine files,
+                    # consistent with PYTHONPATH setup in reboot_pyob.
                     if os.path.exists(src):
                         shutil.copy(src, str(pod_path))
             except Exception as e:
