@@ -11,6 +11,8 @@
 [![Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-8E75B2?style=for-the-badge&logo=google-gemini&logoColor=white)](https://ai.google.dev/)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)]()
+![Verify Codebase](https://github.com/vicsanity623/PyOB/actions/workflows/verify.yml/badge.svg)
+![Marketplace](https://img.shields.io/badge/Marketplace-PyOB-green?logo=github)
 
 **PYOB is a high-fidelity autonomous agent that performs surgical code modifications, cross-file dependency tracking, and self-healing verification — all without destroying your codebase.**
 

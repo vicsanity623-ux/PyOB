@@ -12,38 +12,55 @@ DEFAULT_LOCAL_MODEL = "qwen3-coder:30b"
 
 
 def load_config():
-    """Load config, or prompt user if missing."""
+    """Load config from file or environment, or prompt user if missing."""
+    # 1. Try loading from the local configuration file first
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError) as e:
             print(
-                f"â ï¸  Warning: Configuration file {CONFIG_FILE} is invalid or inaccessible ({e}). Re-creating."
+                f"⚠️ Warning: Configuration file {CONFIG_FILE} is invalid or inaccessible ({e}). Re-creating."
             )
         except Exception as e:
             print(
-                f"â ï¸  Warning: An unexpected error occurred while loading config ({e}). Re-creating."
+                f"⚠️ Warning: An unexpected error occurred while loading config ({e}). Re-creating."
             )
 
+    # 2. Check for Environment Variables (Ensures it works in GitHub Actions/Docker)
+    env_keys = os.environ.get("PYOB_GEMINI_KEYS")
+    if env_keys:
+        return {
+            "gemini_keys": env_keys,
+            "gemini_model": os.environ.get("PYOB_GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+            "local_model": os.environ.get("PYOB_LOCAL_MODEL", DEFAULT_LOCAL_MODEL),
+        }
+
+    # 3. Safety Check for Headless Environments
+    if not sys.stdin.isatty():
+        print("❌ Error: No API keys found in environment and stdin is not a TTY.")
+        print("   In GitHub Actions, please set the PYOB_GEMINI_KEYS secret.")
+        sys.exit(1)
+
+    # 4. Standard Interactive Setup (reached on local iMac first-run)
     print("🛠️  PYOB First-Time Setup")
     print("═" * 40)
     print("\n🔑 Step 1: Gemini API Keys")
     print("Enter up to 10 keys separated by commas:")
     keys = input("Keys: ").strip()
+
     print("\n🤖 Step 2: Model Configuration")
-    print("⚠️  WARNING: PYOB is optimized for 'gemini-2.5-flash' and 'qwen3-coder:30b'.")
+    print("⚠️  WARNING: PYOB is optimized for 'gemini-2.0-flash' and 'qwen3-coder:30b'.")
     print("   Changing these may result in parsing errors or logic loops.")
 
-    g_model = input(f"\nEnter Gemini Model [default: {DEFAULT_GEMINI_MODEL}]: ").strip()
-    if not g_model:
-        g_model = DEFAULT_GEMINI_MODEL
-
-    l_model = input(
-        f"Enter Local Ollama Model [default: {DEFAULT_LOCAL_MODEL}]: "
-    ).strip()
-    if not l_model:
-        l_model = DEFAULT_LOCAL_MODEL
+    g_model = (
+        input(f"\nEnter Gemini Model [default: {DEFAULT_GEMINI_MODEL}]: ").strip()
+        or DEFAULT_GEMINI_MODEL
+    )
+    l_model = (
+        input(f"Enter Local Ollama Model [default: {DEFAULT_LOCAL_MODEL}]: ").strip()
+        or DEFAULT_LOCAL_MODEL
+    )
 
     config = {"gemini_keys": keys, "gemini_model": g_model, "local_model": l_model}
 
@@ -72,27 +89,42 @@ def main():
     print("═" * 70)
     print("                  PYOB Launcher")
     print("═" * 70)
+
     config = load_config()
-    os.environ["PYOB_GEMINI_KEYS"] = config.get("gemini_keys", "")
-    os.environ["PYOB_GEMINI_MODEL"] = config.get("gemini_model", DEFAULT_GEMINI_MODEL)
-    os.environ["PYOB_LOCAL_MODEL"] = config.get("local_model", DEFAULT_LOCAL_MODEL)
+
+    # Prioritize environment variables if set (e.g. by Docker/Actions)
+    os.environ.setdefault("PYOB_GEMINI_KEYS", config.get("gemini_keys", ""))
+    os.environ.setdefault(
+        "PYOB_GEMINI_MODEL", config.get("gemini_model", DEFAULT_GEMINI_MODEL)
+    )
+    os.environ.setdefault(
+        "PYOB_LOCAL_MODEL", config.get("local_model", DEFAULT_LOCAL_MODEL)
+    )
 
     from pyob.entrance import EntranceController
 
+    target_dir = ""
     if len(sys.argv) > 1:
         arg = sys.argv[1]
+        # Filter out internal macOS process paths
         if ".app/Contents/MacOS" in arg or arg == sys.executable:
+            if sys.stdin.isatty():
+                target_dir = input(
+                    "\nEnter the FULL PATH to your target project directory\n"
+                    "(or just press Enter to use the current folder): "
+                ).strip()
+            else:
+                target_dir = "."
+        else:
+            target_dir = arg
+    else:
+        if sys.stdin.isatty():
             target_dir = input(
                 "\nEnter the FULL PATH to your target project directory\n"
                 "(or just press Enter to use the current folder): "
             ).strip()
         else:
-            target_dir = arg
-    else:
-        target_dir = input(
-            "\nEnter the FULL PATH to your target project directory\n"
-            "(or just press Enter to use the current folder): "
-        ).strip()
+            target_dir = "."
 
     if not target_dir:
         target_dir = "."
@@ -101,7 +133,8 @@ def main():
 
     if not os.path.isdir(target_dir):
         print(f"❌ Error: Directory does not exist → {target_dir}")
-        input("\nPress Enter to exit...")
+        if sys.stdin.isatty():
+            input("\nPress Enter to exit...")
         sys.exit(1)
 
     print(f"\n🚀 Starting PYOB on: {target_dir}")
@@ -120,7 +153,8 @@ def main():
 
         traceback.print_exc()
     finally:
-        input("\nPress Enter to close this window...")
+        if sys.stdin.isatty():
+            input("\nPress Enter to close this window...")
 
 
 if __name__ == "__main__":
