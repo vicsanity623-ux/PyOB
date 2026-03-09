@@ -380,7 +380,6 @@ class CoreUtilsMixin:
             if key is not None:
                 response_text = self.stream_gemini(prompt, key, on_chunk)
             else:
-
                 if os.environ.get("GITHUB_ACTIONS") == "true":
                     first_chunk_received[0] = True
                     return "ERROR_CODE_CLOUD_OLLAMA_BLOCKED"
@@ -395,7 +394,9 @@ class CoreUtilsMixin:
 
         final_time = time.time() - gen_start_time
         if response_text and not response_text.startswith("ERROR_CODE_"):
-            print(f"\n\n[✅ Generation Complete: ~{len(response_text) // 4} tokens in {final_time:.1f}s]")
+            print(
+                f"\n\n[✅ Generation Complete: ~{len(response_text) // 4} tokens in {final_time:.1f}s]"
+            )
         return response_text
 
     def get_valid_llm_response(self, prompt: str, validator, context: str = "") -> str:
@@ -403,7 +404,9 @@ class CoreUtilsMixin:
         use_ollama = False
         is_cloud = os.environ.get("GITHUB_ACTIONS") == "true"
 
-        logger.info(f"📊 Engine check: Found {len(self.key_cooldowns)} Gemini API keys.")
+        logger.info(
+            f"📊 Engine check: Found {len(self.key_cooldowns)} Gemini API keys."
+        )
 
         while True:
             key = None
@@ -413,31 +416,45 @@ class CoreUtilsMixin:
             ]
             if not available_keys:
                 if is_cloud:
-                    wait_times = [cooldown - now for cooldown in self.key_cooldowns.values()]
-                    sleep_duration = max(10, min(min(wait_times) if wait_times else 120, 1200))
-                    logger.warning(f"⏳ CLOUD NOTICE: All keys rate-limited. Retrying Gemini in {int(sleep_duration)}s...")
+                    wait_times = [
+                        cooldown - now for cooldown in self.key_cooldowns.values()
+                    ]
+                    sleep_duration = max(
+                        10, min(min(wait_times) if wait_times else 120, 1200)
+                    )
+                    logger.warning(
+                        f"⏳ CLOUD NOTICE: All keys rate-limited. Retrying Gemini in {int(sleep_duration)}s..."
+                    )
                     time.sleep(sleep_duration)
                     continue
 
                 if not use_ollama:
-                    logger.warning("🚫 All Gemini keys rate-limited. Falling back to Local Ollama.")
+                    logger.warning(
+                        "🚫 All Gemini keys rate-limited. Falling back to Local Ollama."
+                    )
                     use_ollama = True
             else:
                 use_ollama = False
                 key = available_keys[attempts % len(available_keys)]
-                logger.info(f"Attempting Gemini API Key {attempts % len(available_keys) + 1}/{len(available_keys)}")
+                logger.info(
+                    f"Attempting Gemini API Key {attempts % len(available_keys) + 1}/{len(available_keys)}"
+                )
 
             if use_ollama:
                 logger.info("Using Local Ollama Engine...")
 
             response_text = self._stream_single_llm(prompt, key=key, context=context)
 
-            if is_cloud and (response_text.startswith("ERROR_CODE_") or not response_text.strip()):
+            if is_cloud and (
+                response_text.startswith("ERROR_CODE_") or not response_text.strip()
+            ):
                 if "429" in response_text and key:
                     self.key_cooldowns[key] = time.time() + 1200
-                    logger.warning(f"⚠️ Key rate-limited. Rotating...")
+                    logger.warning("⚠️ Key rate-limited. Rotating...")
                 else:
-                    logger.warning(f"⚠️ Gemini error/empty response. Sleeping 10s before retry...")
+                    logger.warning(
+                        "⚠️ Gemini error/empty response. Sleeping 10s before retry..."
+                    )
                     time.sleep(10)
                 attempts += 1
                 continue
