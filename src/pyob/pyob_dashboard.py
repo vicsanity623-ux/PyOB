@@ -41,6 +41,28 @@ OBSERVER_HTML = """
         input, textarea { background: #000; border: 1px solid #2a2a30; color: var(--accent); padding: 10px; border-radius: 4px; width: 100%; font-family: 'JetBrains Mono'; margin-bottom: 10px; }
         button { width: 100%; padding: 12px; background: var(--accent); color: #000; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; transition: 0.2s; }
         button:hover { filter: brightness(1.2); }
+        /* Specific styles for queue items */
+        .queue-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #00000066;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: 'JetBrains Mono';
+            font-size: 0.8em;
+            color: #ced4e0;
+        }
+        .queue-item button {
+            width: auto;
+            padding: 5px 10px;
+            font-size: 0.7em;
+            margin-left: 5px;
+            border-radius: 3px;
+        }
+        .queue-item .move-btn { background: #4a4a50; color: var(--text); }
+        .queue-item .remove-btn { background: #cc0000; color: #fff; }
     </style>
 </head>
 <body>
@@ -78,7 +100,7 @@ OBSERVER_HTML = """
         </div>
         <div class="card">
             <div class="label">Queue Status</div>
-            <div id="queue" class="data-box" style="height: 100px;">IDLE</div>
+            <div id="queue" class="data-box" style="height: 200px;">IDLE</div> <!-- Increased height for interactive queue -->
         </div>
     </div>
 
@@ -97,10 +119,31 @@ OBSERVER_HTML = """
                 document.getElementById('memory').value = data.memory || "Brain empty."; // Changed to .value for textarea
                 document.getElementById('history').innerText = data.history || "No logs.";
                 document.getElementById('analysis').innerText = data.analysis || "Parsing...";
+
+                // --- START NEW QUEUE RENDERING LOGIC ---
                 const queueDiv = document.getElementById('queue');
-                queueDiv.innerText = data.cascade_queue?.length > 0 ? data.cascade_queue.join('\\n') : "EMPTY";
+                queueDiv.innerHTML = ''; // Clear previous content
+                if (data.cascade_queue && data.cascade_queue.length > 0) {
+                    data.cascade_queue.forEach((item, index) => {
+                        const itemElement = document.createElement('div');
+                        itemElement.className = 'queue-item';
+                        itemElement.innerHTML = `
+                            <span style="flex-grow: 1;">${item}</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button class="move-btn" onclick="moveQueueItem('${item}', 'up')">Ã¢â â</button>
+                                <button class="move-btn" onclick="moveQueueItem('${item}', 'down')">Ã¢â â</button>
+                                <button class="remove-btn" onclick="removeQueueItem('${item}')">X</button>
+                            </div>
+                        `;
+                        queueDiv.appendChild(itemElement);
+                    });
+                } else {
+                    queueDiv.innerText = "EMPTY";
+                }
+                // --- END NEW QUEUE RENDERING LOGIC ---
+
                 await updatePendingPatches(); // Refresh pending patches
-            } catch (e) { document.getElementById('status-pill').innerText = "OFFLINE"; }
+            } catch (e) { document.getElementById('status-pill').innerText = "OFFLINE"; console.error("Error updating stats:", e); }
         }
 
         async function setManualTarget() {
@@ -178,6 +221,39 @@ OBSERVER_HTML = """
                 alert("Error saving Logic Memory. Check console for details.");
             }
         }
+
+        // --- START NEW QUEUE INTERACTION FUNCTIONS ---
+        async function moveQueueItem(itemId, direction) {
+            try {
+                await fetch('/api/cascade_queue/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId, direction: direction })
+                });
+                await updateStats(); // Refresh queue after move
+            } catch (e) {
+                console.error(`Failed to move item ${itemId} ${direction}:`, e);
+                alert(`Failed to move item. Check console for details.`);
+            }
+        }
+
+        async function removeQueueItem(itemId) {
+            if (!confirm(`Are you sure you want to remove "${itemId}" from the queue?`)) {
+                return;
+            }
+            try {
+                await fetch('/api/cascade_queue/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId })
+                });
+                await updateStats(); // Refresh queue after removal
+            } catch (e) {
+                console.error(`Failed to remove item ${itemId}:`, e);
+                alert(`Failed to remove item. Check console for details.`);
+            }
+        }
+        // --- END NEW QUEUE INTERACTION FUNCTIONS ---
 
         setInterval(updateStats, 3000);
         updateStats();
@@ -470,6 +546,136 @@ class ObserverHandler(BaseHTTPRequestHandler):
                     json.dumps(
                         {
                             "error": "Controller method 'update_memory' not found. Ensure entrance.py is updated."
+                        }
+                    ).encode()
+                )
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": f"Internal server error: {str(e)}"}).encode()
+                )
+        # NEW POST endpoint for moving cascade queue items
+        elif self.path == "/api/cascade_queue/move":
+            if self.controller is None:
+                self.send_response(503)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": "Controller not initialized"}).encode()
+                )
+                return
+
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+                item_id = data.get("item_id")
+                direction = data.get("direction")
+
+                if not item_id or direction not in ["up", "down"]:
+                    self.send_response(400)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(
+                        json.dumps(
+                            {
+                                "error": "Missing 'item_id' or invalid 'direction' in request body"
+                            }
+                        ).encode()
+                    )
+                    return
+
+                self.controller.move_cascade_queue_item(item_id, direction)
+
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {"message": f"Item {item_id} moved {direction} successfully"}
+                    ).encode()
+                )
+
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode())
+            except AttributeError:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "error": "Controller method 'move_cascade_queue_item' not found. Ensure entrance.py is updated."
+                        }
+                    ).encode()
+                )
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": f"Internal server error: {str(e)}"}).encode()
+                )
+
+        # NEW POST endpoint for removing cascade queue items
+        elif self.path == "/api/cascade_queue/remove":
+            if self.controller is None:
+                self.send_response(503)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": "Controller not initialized"}).encode()
+                )
+                return
+
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+                item_id = data.get("item_id")
+
+                if not item_id:
+                    self.send_response(400)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(
+                        json.dumps(
+                            {"error": "Missing 'item_id' in request body"}
+                        ).encode()
+                    )
+                    return
+
+                self.controller.remove_cascade_queue_item(item_id)
+
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {"message": f"Item {item_id} removed successfully"}
+                    ).encode()
+                )
+
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode())
+            except AttributeError:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "error": "Controller method 'remove_cascade_queue_item' not found. Ensure entrance.py is updated."
                         }
                     ).encode()
                 )
