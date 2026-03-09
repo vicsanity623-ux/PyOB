@@ -120,7 +120,7 @@ OBSERVER_HTML = """
 
 
 class ObserverHandler(BaseHTTPRequestHandler):
-    controller: "EntranceController" | None = None
+    controller: Any = None
 
     def do_GET(self):
         if self.path == "/api/status":
