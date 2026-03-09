@@ -443,7 +443,8 @@ class CoreUtilsMixin:
                 continue
 
             if response_text.startswith("ERROR_CODE_429"):
-                if key: self.key_cooldowns[key] = time.time() + 1200
+                if key:
+                    self.key_cooldowns[key] = time.time() + 1200
                 attempts += 1
                 continue
 
@@ -456,7 +457,8 @@ class CoreUtilsMixin:
             else:
                 logger.warning("LLM response failed validation. Retrying...")
                 attempts += 1
-                if is_cloud: time.sleep(5)
+                if is_cloud:
+                    time.sleep(5)
 
     def _get_user_prompt_augmentation(self, initial_text: str = "") -> str:
         import tempfile
