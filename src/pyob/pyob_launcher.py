@@ -10,6 +10,117 @@ CONFIG_FILE = Path.home() / ".pyob_config"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_LOCAL_MODEL = "qwen3-coder:30b"
 
+# New feature content: HTML and JavaScript for the Pending Patch Review Card.
+# This content is intended for OBSERVER_HTML, which is likely served by
+# pyob_dashboard.py or entrance.py. Storing it here as a string literal
+# in pyob_launcher.py makes it syntactically valid Python, but it would
+# require further integration in the web serving components (e.g.,
+# EntranceController or pyob_dashboard.py) to be functionally active
+# in the frontend UI.
+OBSERVER_PATCH_REVIEW_HTML = """
+<!-- New card for Pending Patch Reviews -->
+<div class="card" id="patchReviewCard">
+    <div class="card-header">
+        <h3>Pending Patch Reviews <span id="pendingPatchCount" class="badge bg-secondary">0</span></h3>
+    </div>
+    <div class="card-body">
+        <div id="pendingPatchesList">
+            <p class="text-muted" id="noPatchesMessage">No pending patches.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * Fetches pending patches from the backend API and renders them on the dashboard.
+     */
+    async function fetchPendingPatches() {
+        try {
+            const response = await fetch('/api/pending_patches');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const patches = await response.json();
+            renderPendingPatches(patches);
+        } catch (error) {
+            console.error('Error fetching pending patches:', error);
+            document.getElementById('pendingPatchesList').innerHTML = '<p class="text-danger">Failed to load patches.</p>';
+            document.getElementById('pendingPatchCount').textContent = 'Error';
+        }
+    }
+
+    /**
+     * Renders the list of pending patches into the dashboard card.
+     * @param {Array<Object>} patches - An array of patch objects. Each object should have 'id', 'title', and 'summary'.
+     */
+    function renderPendingPatches(patches) {
+        const listContainer = document.getElementById('pendingPatchesList');
+        const countBadge = document.getElementById('pendingPatchCount');
+        listContainer.innerHTML = ''; // Clear previous list
+        countBadge.textContent = patches.length;
+
+        if (patches.length === 0) {
+            listContainer.innerHTML = '<p class="text-muted" id="noPatchesMessage">No pending patches.</p>';
+            return;
+        }
+
+        patches.forEach(patch => {
+            const patchElement = document.createElement('div');
+            patchElement.className = 'patch-item mb-3 p-2 border rounded bg-light'; // Added bg-light for better visibility
+            patchElement.innerHTML = `
+                <h5>${patch.title || 'Untitled Patch'} <small class="text-muted">#${patch.id}</small></h5>
+                <p>${patch.summary || 'No summary available.'}</p>
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-sm btn-success me-2" onclick="reviewPatch('${patch.id}', 'approve')">Approve</button>
+                    <button class="btn btn-sm btn-danger" onclick="reviewPatch('${patch.id}', 'reject')">Reject</button>
+                </div>
+            `;
+            listContainer.appendChild(patchElement);
+        });
+    }
+
+    /**
+     * Sends a patch review action (approve/reject) to the backend API.
+     * @param {string} patchId - The ID of the patch to review.
+     * @param {'approve'|'reject'} action - The review action.
+     */
+    async function reviewPatch(patchId, action) {
+        if (!confirm(`Are you sure you want to ${action} patch #${patchId}? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/review_patch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ patch_id: patchId, action: action }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.message || 'Unknown error'}`);
+            }
+
+            alert(`Patch #${patchId} ${action}d successfully.`);
+            fetchPendingPatches(); // Refresh the list of pending patches
+            if (typeof updateStats === 'function') { // Assuming updateStats is a global function in OBSERVER_HTML
+                updateStats(); // Refresh overall dashboard statistics
+            }
+        } catch (error) {
+            console.error(`Error reviewing patch #${patchId}:`, error);
+            alert(`Failed to ${action} patch #${patchId}: ${error.message}`);
+        }
+    }
+
+    // Initialize the patch review card when the DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', fetchPendingPatches);
+    // Optional: Periodically refresh the list of pending patches (e.g., every 60 seconds)
+    // setInterval(fetchPendingPatches, 60000);
+</script>
+"""
+
 
 def load_config():
     """Load config from file or environment, or prompt user if missing."""
