@@ -410,7 +410,6 @@ class CoreUtilsMixin:
                     logger.warning("⏳ CLOUD NOTICE: All 8 keys are currently rate-limited. Sleeping for 2 minutes...")
                     time.sleep(120) # Wait for a cooldown to expire
                     continue # Loop back and check available_keys again
-                
                 if not use_ollama:
                     logger.warning("🚫 All Gemini keys are currently rate-limited. Falling back to Local Ollama."
                     )
