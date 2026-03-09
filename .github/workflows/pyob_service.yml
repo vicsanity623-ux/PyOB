@@ -1,0 +1,33 @@
+name: PyOB Autonomous Service
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs every hour
+  workflow_dispatch:     # Allows you to start it manually from your phone
+
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BOT_GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyOB
+        run: |
+          pip install -e .
+          pip install ruff mypy pytest types-requests types-chardet
+
+      - name: Run PyOB Service
+        env:
+          PYOB_GEMINI_KEYS: ${{ secrets.PYOB_GEMINI_KEYS }}
+          GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+        run: |
+          # Run for 5 iterations then stop (to avoid timeout)
+          pyob . --iterations 5

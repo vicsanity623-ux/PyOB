@@ -8,145 +8,120 @@ OBSERVER_HTML = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PyOB // OBSERVER</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyOB // ARCHITECT HUD</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #050505; color: #00FF41; font-family: 'Menlo', monospace; margin: 0; padding: 20px; overflow-x: hidden; }
-        .glow { text-shadow: 0 0 10px #00FF41, 0 0 20px #00FF41; }
-        .border { border: 1px solid #00FF41; box-shadow: 0 0 15px rgba(0, 255, 65, 0.2); padding: 20px; margin-bottom: 20px; }
-        h1 { font-size: 2em; border-bottom: 2px solid #00FF41; padding-bottom: 10px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { background: rgba(0, 255, 65, 0.05); }
-        .label { color: #008F11; font-weight: bold; margin-bottom: 5px; }
-        .data { font-size: 0.9em; white-space: pre-wrap; height: 300px; overflow-y: auto; border: 1px solid #004411; padding: 10px; background: #000; }
-        .stat-bar { display: flex; justify-content: space-between; font-size: 1.2em; margin-bottom: 20px; }
-        .queue-item { background: #00FF41; color: #000; padding: 2px 5px; margin: 2px; display: inline-block; font-size: 0.8em; }
-        #iteration { font-size: 1.5em; color: #fff; }
-        /* New styles for patch review */
-        .patch-card { background: rgba(0, 255, 65, 0.1); border: 1px solid #008F11; padding: 10px; margin-bottom: 10px; }
-        .patch-content { font-family: 'Courier New', monospace; font-size: 0.8em; background: #000; border: 1px solid #004411; padding: 5px; margin-top: 5px; max-height: 200px; overflow-y: auto; }
-        .patch-actions button { padding: 5px 10px; margin-right: 5px; cursor: pointer; border: none; }
-        .approve-btn { background: #00FF41; color: #000; }
-        .reject-btn { background: #FF0000; color: #fff; }
+        :root { --bg: #0a0a0c; --card: #141417; --accent: #00ffa3; --text: #e0e0e6; --dim: #88888e; --err: #ff4d4d; }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 15px; line-height: 1.5; }
+        .hud-container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        
+        /* Typography & Glow */
+        h1 { grid-column: span 2; font-family: 'JetBrains Mono'; font-size: 1.2rem; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin: 10px 0; display: flex; justify-content: space-between; }
+        .glow { text-shadow: 0 0 15px var(--accent); }
+
+        /* Component Cards */
+        .card { background: var(--card); border: 1px solid #2a2a30; border-radius: 8px; padding: 20px; overflow: hidden; position: relative; }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 0.3; }
+        .label { font-size: 0.7rem; font-weight: 600; color: var(--dim); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+        .label::before { content: ''; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
+
+        /* Data Displays */
+        .data-box { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; height: 250px; overflow-y: auto; background: #00000044; border-radius: 4px; padding: 12px; color: #ced4e0; scrollbar-width: thin; }
+        .stat-grid { grid-column: span 2; display: flex; gap: 40px; background: var(--card); padding: 15px 25px; border-radius: 8px; border: 1px solid #2a2a30; }
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-val { font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono'; color: #fff; }
+        .stat-lbl { font-size: 0.6rem; color: var(--dim); }
+
+        /* Mobile Specifics */
+        @media (max-width: 768px) {
+            .hud-container { grid-template-columns: 1fr; }
+            h1, .stat-grid { grid-column: 1; }
+            .stat-grid { flex-wrap: wrap; gap: 20px; }
+        }
+
+        .status-pill { padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; background: #222; }
+        .evolving { color: var(--accent); border: 1px solid var(--accent); box-shadow: 0 0 10px #00ffa344; }
+        
+        input { background: #000; border: 1px solid #2a2a30; color: var(--accent); padding: 10px; border-radius: 4px; width: 100%; font-family: 'JetBrains Mono'; margin-bottom: 10px; }
+        button { width: 100%; padding: 12px; background: var(--accent); color: #000; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        button:hover { filter: brightness(1.2); }
     </style>
 </head>
 <body>
-    <h1 class="glow">PYOB_OS // OBSERVER_DASHBOARD</h1>
-    <div class="stat-bar border card">
-        <div>ITERATION: <span id="iteration" class="glow">--</span></div>
-        <div>LEDGER: <span id="ledger">--</span> symbols</div>
-        <div>STATUS: <span id="status" style="color: #fff">SCANNING...</span></div>
-    </div>
-    <div class="border card"><div class="label">SYMBOLIC CASCADE QUEUE:</div><div id="queue">--</div></div>
-    <div class="grid">
-        <div class="border card"><div class="label">LIVE MEMORY (MEMORY.md):</div><div id="memory" class="data">--</div></div>
-        <div class="border card"><div class="label">RECENT HISTORY (HISTORY.md):</div><div id="history" class="data">--</div></div>
-    </div>
-    <div class="border card"><div class="label">LATEST ARCHITECTURAL ANALYSIS:</div><div id="analysis" class="data">--</div></div>
-    <!-- New section for Pending Architectural Patches -->
-    <div class="border card">
-        <div class="label">PENDING ARCHITECTURAL PATCHES:</div>
-        <div id="pendingPatches" class="data" style="height: auto; min-height: 150px;">
-            <!-- Patches will be loaded here -->
-            No pending patches.
+    <h1>
+        <span>PyOB // Evolution Engine</span>
+        <span id="status-pill" class="status-pill">READY</span>
+    </h1>
+
+    <div class="hud-container">
+        <div class="stat-grid">
+            <div class="stat-item"><span class="stat-lbl">Iteration</span><span id="iteration" class="stat-val">--</span></div>
+            <div class="stat-item"><span class="stat-lbl">Symbolic Ledger</span><span id="ledger" class="stat-val">--</span></div>
+            <div class="stat-item"><span class="stat-lbl">Pending Cascades</span><span id="queue-count" class="stat-val">--</span></div>
+        </div>
+
+        <div class="card">
+            <div class="label">Logic Memory (MEMORY.md)</div>
+            <div id="memory" class="data-box">Initializing brain...</div>
+        </div>
+
+        <div class="card">
+            <div class="label">System Logs (HISTORY.md)</div>
+            <div id="history" class="data-box">No history yet.</div>
+        </div>
+
+        <div class="card" style="grid-column: span 2;">
+            <div class="label">Architectural Analysis</div>
+            <div id="analysis" class="data-box" style="height: 350px;">Scanning structure...</div>
+        </div>
+
+        <div class="card">
+            <div class="label">Manual Override</div>
+            <input type="text" id="manualTargetFile" placeholder="src/pyob/target.py">
+            <button onclick="setManualTarget()">FORCE TARGET</button>
+        </div>
+
+        <div class="card">
+            <div class="label">Queue Status</div>
+            <div id="queue" class="data-box" style="height: 100px;">IDLE</div>
         </div>
     </div>
-    <div class="border card">
-        <div class="label">MANUAL TARGET OVERRIDE:</div>
-        <input type="text" id="manualTargetFile" placeholder="e.g., src/pyob/new_feature.py" style="width: calc(100% - 120px); padding: 8px; margin-right: 10px; background: #000; border: 1px solid #00FF41; color: #00FF41;">
-        <button onclick="setManualTarget()" style="padding: 8px 15px; background: #00FF41; color: #000; border: none; cursor: pointer;">Set Next Target</button>
-        <div id="targetMessage" style="margin-top: 10px; font-size: 0.9em;"></div>
-    </div>
+
     <script>
         async function updateStats() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                document.getElementById('iteration').innerText = data.iteration;
-                document.getElementById('ledger').innerText = data.ledger_stats.definitions;
-                document.getElementById('memory').innerText = data.memory || "Initializing brain...";
-                document.getElementById('history').innerText = data.history || "No history recorded yet.";
-                document.getElementById('analysis').innerText = data.analysis || "Parsing directory structure...";
+                
+                document.getElementById('iteration').innerText = data.iteration || "0";
+                document.getElementById('ledger').innerText = (data.ledger_stats?.definitions || 0) + " SYM";
+                document.getElementById('queue-count').innerText = data.cascade_queue?.length || "0";
+                
+                const pill = document.getElementById('status-pill');
+                const isEvolving = data.cascade_queue?.length > 0 || data.patches_count > 0;
+                pill.innerText = isEvolving ? "EVOLVING" : "STABLE";
+                pill.className = isEvolving ? "status-pill evolving" : "status-pill";
+
+                document.getElementById('memory').innerText = data.memory || "Brain empty.";
+                document.getElementById('history').innerText = data.history || "No logs.";
+                document.getElementById('analysis').innerText = data.analysis || "Parsing...";
+                
                 const queueDiv = document.getElementById('queue');
-                queueDiv.innerHTML = data.cascade_queue.length > 0 ? data.cascade_queue.map(f => `<span class='queue-item'>${f}</span>`).join('') : "IDLE // NO PENDING CASCADES";
-                document.getElementById('status').innerText = data.cascade_queue.length > 0 ? "EVOLVING" : "READY";
-
-                // Fetch and render pending patches
-                const patchesResponse = await fetch('/api/pending_patches');
-                const patchesData = await patchesResponse.json();
-                renderPatches(patchesData.patches);
-
-            } catch (e) {
-                console.error("Error updating stats:", e);
-                document.getElementById('status').innerText = "OFFLINE";
-            }
+                queueDiv.innerText = data.cascade_queue?.length > 0 ? data.cascade_queue.join('\\n') : "EMPTY";
+            } catch (e) { document.getElementById('status-pill').innerText = "OFFLINE"; }
         }
 
         async function setManualTarget() {
             const targetFile = document.getElementById('manualTargetFile').value;
-            const targetMessageDiv = document.getElementById('targetMessage');
-            if (!targetFile) {
-                targetMessageDiv.innerText = "Please enter a file path.";
-                targetMessageDiv.style.color = 'red';
-                return;
-            }
-            try {
-                const response = await fetch('/api/set_target_file', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target_file: targetFile })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    targetMessageDiv.innerText = `Target set: ${data.target_file}`;
-                    targetMessageDiv.style.color = '#00FF41';
-                    document.getElementById('manualTargetFile').value = ''; // Clear input
-                } else {
-                    targetMessageDiv.innerText = `Error: ${data.error || 'Failed to set target.'}`;
-                    targetMessageDiv.style.color = 'red';
-                }
-            } catch (e) {
-                targetMessageDiv.innerText = `Network error: ${e.message}`;
-                targetMessageDiv.style.color = 'red';
-            }
-        }
-
-        // New function to render patches
-        function renderPatches(patches) {
-            const patchesDiv = document.getElementById('pendingPatches');
-            if (patches.length === 0) {
-                patchesDiv.innerHTML = "No pending patches.";
-                return;
-            }
-            patchesDiv.innerHTML = patches.map(patch => `
-                <div class="patch-card">
-                    <div class="label">Patch ID: ${patch.id}</div>
-                    <pre class="patch-content">${patch.content}</pre>
-                    <div class="patch-actions" style="margin-top: 10px;">
-                        <button class="approve-btn" onclick="reviewPatch('${patch.id}', 'approve')">Approve</button>
-                        <button class="reject-btn" onclick="reviewPatch('${patch.id}', 'reject')">Reject</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // New function to send patch review action
-        async function reviewPatch(patchId, action) {
-            try {
-                const response = await fetch('/api/review_patch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ patch_id: patchId, action: action })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    alert(`Patch ${patchId} ${action}d successfully.`);
-                    updateStats(); // Refresh dashboard to reflect changes
-                } else {
-                    alert(`Error ${action}ing patch ${patchId}: ${data.error || 'Unknown error'}`);
-                }
-            } catch (e) {
-                alert(`Network error while ${action}ing patch ${patchId}: ${e.message}`);
-            }
+            if (!targetFile) return;
+            await fetch('/api/set_target_file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_file: targetFile })
+            });
+            document.getElementById('manualTargetFile').value = '';
         }
 
         setInterval(updateStats, 3000);
