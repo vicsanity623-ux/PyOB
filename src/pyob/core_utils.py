@@ -487,10 +487,10 @@ class CoreUtilsMixin:
 
             # 3. Handle Empty or Error Responses (STOPS THE INFINITE LOOP)
             if not response_text or response_text.startswith("ERROR_CODE_"):
-                logger.warning(
-                    "⚠️ API Error/Empty Response. Sleeping 10s before retry..."
-                )
-                time.sleep(10)  # MANDATORY SLEEP to prevent tight-looping
+                # If we are in the cloud, we need to wait longer for the token bucket to refill
+                wait_time = 60 if is_cloud else 10
+                logger.warning(f"⚠️ API Error/Empty Response. Sleeping {wait_time}s to refill tokens...")
+                time.sleep(wait_time) 
                 attempts += 1
                 continue
 
